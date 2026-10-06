@@ -2210,6 +2210,20 @@ class PickingController extends BaseController
         $css       = $this->remisionCss();
 
         $sucursal = $rows->pluck('sucursal_entrega')->filter()->unique()->implode(', ') ?: '-';
+        // Pedidos de la planilla para el encabezado (2026-10-05): si se filtra por
+        // planilla, TODOS sus pedidos (también los ya separados); si no, los de las líneas.
+        if (!empty($qp['planilla_numero'])) {
+            $pedidosTxt = OrdenPicking::where('empresa_id', $empresaId)
+                ->where('planilla_numero', $qp['planilla_numero'])
+                ->where('estado', '!=', 'Cancelada')
+                ->orderBy('id')->get(['numero_factura', 'numero_orden', 'sucursal_entrega'])
+                ->map(fn($o) => trim($o->numero_factura ?: $o->numero_orden) . ($o->sucursal_entrega ? " ({$o->sucursal_entrega})" : ''))
+                ->filter()->unique()->implode(' · ');
+        } else {
+            $pedidosTxt = $rows->map(fn($x) => trim(($x->numero_factura ?: $x->numero_orden) ?? '') . ($x->sucursal_entrega ? ' (' . $x->sucursal_entrega . ')' : ''))
+                ->filter()->unique()->sort()->implode(' · ');
+        }
+        $pedidosTxt = $pedidosTxt ?: '-';
         $fechaHoy = date('d/m/Y');
 
         // Misma sugerencia FEFO que manualLineas(): la hoja impresa tampoco
@@ -2297,6 +2311,7 @@ class PickingController extends BaseController
             . "<div class='info-grid'>"
             . "  <span class='campo'><span class='lbl'>Sucursal:</span>" . htmlspecialchars($sucursal) . "</span>"
             . "  <span class='campo'><span class='lbl'>Planilla:</span>" . htmlspecialchars($rows->pluck('planilla_numero')->filter()->unique()->implode(', ') ?: '-') . "</span>"
+            . "  <span class='campo' style='grid-column:1 / -1;'><span class='lbl'>Pedidos de la planilla:</span>" . htmlspecialchars($pedidosTxt) . "</span>"
             . "  <span class='campo'><span class='lbl'>Ambiente:</span>" . htmlspecialchars(!empty($qp['ambiente']) ? ucfirst(strtolower($qp['ambiente'])) : 'Todos') . "</span>"
             . "  <span class='campo'><span class='lbl'>Auxiliar(es):</span>" . htmlspecialchars($auxNombres) . "</span>"
             . "  <span class='campo'><span class='lbl'>Total referencias:</span>{$rows->count()}</span>"
@@ -5608,6 +5623,11 @@ class PickingController extends BaseController
         $novedadNombre  = '';
         $fechaVencManual = isset($body['fecha_vencimiento_manual']) && $body['fecha_vencimiento_manual'] !== ''
             ? $body['fecha_vencimiento_manual'] : null;
+        // Lote digitado a mano (Picking Manual, línea sin stock registrado) — 2026-10-05.
+        // Solo completa el lote de la LÍNEA si está vacío (para la remisión); nunca
+        // modifica el inventario, mismo criterio que fecha_vencimiento_manual.
+        $loteManual = isset($body['lote_manual']) && trim((string)$body['lote_manual']) !== ''
+            ? mb_substr(trim((string)$body['lote_manual']), 0, 60) : null;
 
         if ($novedadId) {
             $novedadObj = Capsule::table('causales_novedad')->find($novedadId);
@@ -5821,7 +5841,7 @@ class PickingController extends BaseController
             // stock físico' sin importar la causal realmente reportada, y causal_id
             // nunca se guardaba (la remisión terminaba mostrando otra causal o
             // ninguna, distinta a la que se reportó desde el dispositivo móvil).
-            Capsule::transaction(function () use ($detalles, $asignaciones, $user, $r, $now, $fechaVencManual, $causalSinInventarioId, $novedadId, $novedadNombre) {
+            Capsule::transaction(function () use ($detalles, $asignaciones, $user, $r, $now, $fechaVencManual, $loteManual, $causalSinInventarioId, $novedadId, $novedadNombre) {
 
                 $ordenIds = [];
 
@@ -5962,6 +5982,9 @@ class PickingController extends BaseController
                     }
                     if (!$det->fecha_vencimiento && $fechaVencManual) {
                         $det->fecha_vencimiento = $fechaVencManual;
+                    }
+                    if (!$det->lote && $loteManual) {
+                        $det->lote = $loteManual;
                     }
                     $det->save();
 

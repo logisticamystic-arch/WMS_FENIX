@@ -419,12 +419,22 @@ WMS_MODULES.picking = {
                  style="width:150px;font-family:monospace;font-weight:700;"
                  title="Escriba o elija la ubicación de donde se separa (solo ubicaciones con stock de esta referencia)"
                  onfocus="WMS_MODULES.picking._pkmUbicBuscar('${g.key}',${i},this)"
-                 oninput="WMS_MODULES.picking._pkmUbicBuscar('${g.key}',${i},this)">
+                 oninput="WMS_MODULES.picking._pkmUbicBuscar('${g.key}',${i},this)"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
+                 onchange="WMS_MODULES.picking._pkmUbicEscrita('${g.key}',${i},this)">
         </td>
         <td style="white-space:nowrap;">${WMS.esc(it.producto_codigo || '')}</td>
         <td style="min-width:200px;">${WMS.esc(it.producto_nombre || '')}${upc > 1 ? `<div style="font-size:.68rem;color:var(--muted);">${upc} und/caja</div>` : ''}</td>
-        <td style="white-space:nowrap;">${WMS.esc(it.lote || '—')}</td>
-        <td style="white-space:nowrap;">${fv}</td>
+        <td style="white-space:nowrap;">
+          <input type="text" class="form-control form-control-sm pkm-lote" value="${WMS.esc(it.lote || '')}" placeholder="Lote" autocomplete="off" style="width:110px;"
+                 title="Elija el lote de la lista (registros de inventario con stock). Si la referencia no tiene stock registrado, puede escribirlo."
+                 onfocus="WMS_MODULES.picking._pkmUbicBuscar('${g.key}',${i},this,true)" onchange="WMS_MODULES.picking._pkmCampoLibre('${g.key}',${i},this,'lote')">
+        </td>
+        <td style="white-space:nowrap;">
+          <input type="date" class="form-control form-control-sm pkm-fv" value="${it.fecha_vencimiento ? String(it.fecha_vencimiento).slice(0, 10) : ''}" style="width:140px;"
+                 title="Elija el vencimiento de la lista (registros de inventario). Si la referencia no tiene stock registrado, puede digitarlo."
+                 onfocus="WMS_MODULES.picking._pkmUbicBuscar('${g.key}',${i},this,true)" onchange="WMS_MODULES.picking._pkmCampoLibre('${g.key}',${i},this,'fv')">
+        </td>
         <td class="text-center" title="Líneas de pedido consolidadas en esta referencia">${String(it.ids || '').split(',').filter(Boolean).length}</td>
         <td class="text-center"><b>${WMS.formatNum(sol)}</b> cj</td>
         <td class="text-center"><input type="number" class="form-control form-control-sm pkm-cajas" value="${sol}" min="0" step="1" style="width:72px;margin:auto;" oninput="WMS_MODULES.picking._pkmRecalc('${g.key}',${i})"></td>
@@ -489,9 +499,10 @@ WMS_MODULES.picking = {
   /** Lista dinámica de ubicaciones con stock de la referencia (GET /picking/stock-alternativo,
    *  la misma fuente de "alternativas" de la terminal). Lista flotante (position:fixed)
    *  para que ninguna tabla con scroll la recorte. */
-  async _pkmUbicBuscar(key, i, input) {
+  async _pkmUbicBuscar(key, i, input, todos = false) {
     const it = (this._pkmItems[key] || [])[i];
     if (!it) return;
+    this._pkmDdCtx = { key, i };
     this._pkmUbicCache = this._pkmUbicCache || {};
     if (!this._pkmUbicCache[it.producto_id]) {
       try {
@@ -499,9 +510,16 @@ WMS_MODULES.picking = {
         this._pkmUbicCache[it.producto_id] = Array.isArray(r.data) ? r.data : (Array.isArray(r) ? r : []);
       } catch (e) { this._pkmUbicCache[it.producto_id] = []; }
     }
-    const q = (input.value || '').trim().toUpperCase();
+    const q = todos ? '' : (input.value || '').trim().toUpperCase();
+    if (todos && !this._pkmUbicCache[it.producto_id].length) {
+      // Sin stock registrado: lote y vencimiento se digitan libremente (se envían al confirmar)
+      const dd0 = document.getElementById('pkm-ubic-dd'); if (dd0) dd0.style.display = 'none';
+      return;
+    }
     const actual = (it.ubicacion_codigo || '').toUpperCase();
     const opciones = this._pkmUbicCache[it.producto_id].filter(o => !q || q === actual || String(o.ubicacion_codigo || '').toUpperCase().includes(q));
+    const esActual = o => String(o.ubicacion_codigo).toUpperCase() === actual && String(o.lote || '') === String(it.lote || '')
+      && String(o.fecha_vencimiento || '').slice(0, 10) === String(it.fecha_vencimiento || '').slice(0, 10);
     let dd = document.getElementById('pkm-ubic-dd');
     if (!dd) {
       dd = document.createElement('div'); dd.id = 'pkm-ubic-dd';
@@ -510,9 +528,9 @@ WMS_MODULES.picking = {
       document.addEventListener('mousedown', e => { if (!e.target.closest('#pkm-ubic-dd') && !e.target.classList.contains('pkm-ubic')) dd.style.display = 'none'; });
     }
     dd.innerHTML = opciones.length ? opciones.map((o, k) => `
-      <div data-k="${k}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border-light);font-size:12px;${String(o.ubicacion_codigo).toUpperCase() === actual ? 'background:var(--info-bg);' : ''}"
-           onmouseover="this.style.background='var(--btn-neutral)'" onmouseout="this.style.background='${String(o.ubicacion_codigo).toUpperCase() === actual ? 'var(--info-bg)' : ''}'">
-        <div style="font-family:monospace;font-weight:700;">${WMS.esc(o.ubicacion_codigo || '-')} ${String(o.ubicacion_codigo).toUpperCase() === actual ? '<span style="font-family:inherit;font-weight:600;color:var(--accent);font-size:10px;">ACTUAL</span>' : ''}</div>
+      <div data-k="${k}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border-light);font-size:12px;${esActual(o) ? 'background:var(--info-bg);' : ''}"
+           onmouseover="this.style.background='var(--btn-neutral)'" onmouseout="this.style.background='${esActual(o) ? 'var(--info-bg)' : ''}'">
+        <div style="font-family:monospace;font-weight:700;">${WMS.esc(o.ubicacion_codigo || '-')} ${esActual(o) ? '<span style="font-family:inherit;font-weight:600;color:var(--accent);font-size:10px;">ACTUAL</span>' : ''}</div>
         <div style="color:var(--muted);font-size:11px;">Disponible: <b>${WMS.formatNum(o.disponible)}</b> und · Lote: ${WMS.esc(o.lote || '—')} · Vence: ${o.fecha_vencimiento ? WMS.formatDate(o.fecha_vencimiento) : '—'}</div>
       </div>`).join('')
       : '<div style="padding:10px 12px;color:var(--muted);font-size:12px;">No hay otras ubicaciones con stock de esta referencia.</div>';
@@ -520,13 +538,52 @@ WMS_MODULES.picking = {
       e.preventDefault();
       dd.style.display = 'none';
       const o = opciones[parseInt(el.dataset.k)];
-      if (o && String(o.ubicacion_codigo).toUpperCase() !== actual) this._pkmUbicCambiar(key, i, o);
-      else input.value = it.ubicacion_codigo || '';
+      const mismoRegistro = o && String(o.ubicacion_codigo).toUpperCase() === actual
+        && String(o.lote || '') === String(it.lote || '')
+        && String(o.fecha_vencimiento || '').slice(0, 10) === String(it.fecha_vencimiento || '').slice(0, 10);
+      if (o && !mismoRegistro) this._pkmUbicCambiar(key, i, o);
+      else this._pkmRestaurarFila(key, i);
     }));
     const r = input.getBoundingClientRect();
     dd.style.display = 'block';
     dd.style.left = Math.min(r.left, innerWidth - 340) + 'px';
     dd.style.top = (r.bottom + 260 > innerHeight ? Math.max(8, r.top - Math.min(260, dd.scrollHeight) - 4) : r.bottom + 2) + 'px';
+  },
+
+  /** Ubicación digitada: si coincide con un registro con stock → se aplica; si no, se avisa. */
+  async _pkmUbicEscrita(key, i, input) {
+    const it = (this._pkmItems[key] || [])[i];
+    if (!it) return;
+    const cod = (input.value || '').trim().toUpperCase();
+    if (!cod || cod === String(it.ubicacion_codigo || '').toUpperCase()) { input.value = it.ubicacion_codigo || ''; return; }
+    const ops = (this._pkmUbicCache?.[it.producto_id]) || [];
+    const o = ops.find(x => String(x.ubicacion_codigo || '').toUpperCase() === cod);
+    if (o) { document.getElementById('pkm-ubic-dd')?.style.setProperty('display', 'none'); return this._pkmUbicCambiar(key, i, o); }
+    WMS.toast('warning', `La ubicación ${cod} no tiene stock disponible de ${it.producto_nombre || 'esta referencia'}. Elija una de la lista.`);
+    input.value = it.ubicacion_codigo || '';
+  },
+
+  /** Lote / vencimiento digitados: libres solo si la referencia no tiene stock registrado
+   *  (se envían como lote_manual / fecha_vencimiento_manual); si tiene, deben elegirse de la lista. */
+  _pkmCampoLibre(key, i, input, campo) {
+    const it = (this._pkmItems[key] || [])[i];
+    if (!it) return;
+    const ops = (this._pkmUbicCache?.[it.producto_id]) || [];
+    if (ops.length) {
+      const v = (input.value || '').trim();
+      const ok = ops.find(o => campo === 'lote' ? String(o.lote || '') === v : String(o.fecha_vencimiento || '').slice(0, 10) === v);
+      if (ok && !(campo === 'lote' ? String(it.lote || '') === v : String(it.fecha_vencimiento || '').slice(0, 10) === v)) return this._pkmUbicCambiar(key, i, ok);
+      if (!ok) WMS.toast('warning', `Ese ${campo === 'lote' ? 'lote' : 'vencimiento'} no existe en el inventario de esta referencia. Elija el registro de la lista (ubicación · lote · vencimiento).`);
+      this._pkmRestaurarFila(key, i);
+    }
+  },
+
+  _pkmRestaurarFila(key, i) {
+    const it = (this._pkmItems[key] || [])[i]; const tr = document.getElementById(`pkm-it-${key}-${i}`);
+    if (!it || !tr) return;
+    tr.querySelector('.pkm-ubic').value = it.ubicacion_codigo || '';
+    tr.querySelector('.pkm-lote').value = it.lote || '';
+    tr.querySelector('.pkm-fv').value = it.fecha_vencimiento ? String(it.fecha_vencimiento).slice(0, 10) : '';
   },
 
   /** Cambia la ubicación de la referencia con POST /picking/reasignar-ubicacion
@@ -536,7 +593,8 @@ WMS_MODULES.picking = {
     if (!it) return;
     const body = {
       linea_ids: String(it.ids).split(',').map(Number).filter(Boolean),
-      ubicacion_id: o.ubicacion_id, lote: o.lote || null, fecha_vencimiento: o.fecha_vencimiento || null,
+      ubicacion_id: o.ubicacion_id, inventario_id: o.inventario_id || null,
+      lote: o.lote || null, fecha_vencimiento: o.fecha_vencimiento || null,
     };
     try {
       let r = await API.post('/picking/reasignar-ubicacion', body);
@@ -552,7 +610,7 @@ WMS_MODULES.picking = {
         if (!isConfirmed) { this._pkmCargarItems(key, true); return; }
         r = await API.post('/picking/reasignar-ubicacion', { ...body, causal_fifo_id: causal });
       }
-      WMS.toast('success', `Ubicación cambiada a ${o.ubicacion_codigo}`);
+      WMS.toast('success', `Cambiado a ${o.ubicacion_codigo} · lote ${o.lote || '—'} · vence ${o.fecha_vencimiento ? WMS.formatDate(o.fecha_vencimiento) : '—'}`);
     } catch (e) {
       WMS.toast('error', e.message || 'No se pudo cambiar la ubicación');
     }
@@ -649,6 +707,11 @@ WMS_MODULES.picking = {
               ids: p.it.ids, cantidad_tomada: p.tomU, cajas_tomadas: p.cajasEnv, saldos_tomados: p.saldoEnv,
               planilla_numero: g.planilla, novedad_id: p.causal ? parseInt(p.causal) : null, confirma_parcial: true,
             };
+            // Lote / vencimiento digitados (solo se usan si la línea no los tiene — ver servidor)
+            const loteM = (p.tr.querySelector('.pkm-lote')?.value || '').trim();
+            const fvM   = (p.tr.querySelector('.pkm-fv')?.value || '').trim();
+            if (loteM && loteM !== String(p.it.lote || '')) body.lote_manual = loteM;
+            if (fvM && fvM !== String(p.it.fecha_vencimiento || '').slice(0, 10)) body.fecha_vencimiento_manual = fvM;
             let r = await API.post('/picking/confirmar-consolidado', body);
             if (r && r.status === 'needs_fecha_vencimiento') {
               const fecha = await this._pkmPedirFecha(r.producto_nombre || p.it.producto_nombre);
