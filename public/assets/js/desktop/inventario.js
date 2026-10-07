@@ -139,8 +139,12 @@ WMS_MODULES.inventario = {
                 : (+it0.unidades_caja > 0 ? +it0.unidades_caja : (this._srUpc || 1));
       this._srUpcActual = upc;
       const stkCajas  = Math.floor(stockActual / upc + 1e-9);
+      // Ubicaciones donde ESTÁ la referencia: solo con stock, primero lo que vence antes (FEFO)
+      const diasVence = i => i.fecha_vencimiento ? Math.floor((new Date(String(i.fecha_vencimiento).slice(0, 10) + 'T00:00:00') - new Date(WMS.getToday() + 'T00:00:00')) / 86400000) : null;
+      const conStock = stockItems.filter(i => +i.cantidad > 0)
+        .sort((a, b) => String(a.fecha_vencimiento || '9999').localeCompare(String(b.fecha_vencimiento || '9999')) || String(a.ubicacion_codigo || '').localeCompare(String(b.ubicacion_codigo || '')));
       const stkSaldos = Math.round((stockActual - stkCajas * upc) * 1000) / 1000;
-      const numUbicaciones = new Set(stockItems.map(i => i.ubicacion_codigo || i.ubicacion).filter(Boolean)).size;
+      const numUbicaciones = new Set(conStock.map(i => i.ubicacion_codigo || i.ubicacion).filter(Boolean)).size;
       const conVencer      = stockItems.filter(i => {
         if (!i.fecha_vencimiento) return false;
         const dias = Math.round((new Date(i.fecha_vencimiento) - Date.now()) / 86400000);
@@ -162,8 +166,8 @@ WMS_MODULES.inventario = {
           <div class="card-header"><span class="card-title"><i class="fa-solid fa-warehouse" style="margin-right:6px;color:var(--accent)"></i>Ubicaciones con Stock</span></div>
           <div class="table-container">
             <table class="erp-table">
-              <thead><tr><th>Ubicación</th><th>Lote</th><th style="text-align:center">Cajas</th><th style="text-align:center">Sueltos</th><th style="text-align:center">UND/TOTAL</th><th>F.Vencimiento</th><th>Estado</th></tr></thead>
-              <tbody>${stockItems.length ? stockItems.map(i => `
+              <thead><tr><th>Ubicación</th><th>Lote</th><th style="text-align:center">Cajas</th><th style="text-align:center">Saldos</th><th style="text-align:center">UND/TOTAL</th><th>F.Vencimiento</th><th style="text-align:center">Días por vencer</th><th>Estado</th></tr></thead>
+              <tbody>${conStock.length ? conStock.map(i => `
                 <tr>
                   <td><span class="pro-badge info">${WMS.esc(i.ubicacion_codigo || i.ubicacion || '—')}</span></td>
                   <td class="muted">${WMS.esc(i.lote || '—')}</td>
@@ -171,15 +175,21 @@ WMS_MODULES.inventario = {
                   <td style="text-align:center;color:#6d28d9">${WMS.formatNum(Math.round((+i.cantidad - Math.floor(+i.cantidad / upc + 1e-9) * upc) * 1000) / 1000)}</td>
                   <td style="text-align:center;font-weight:700">${WMS.formatNum(i.cantidad)}</td>
                   <td class="muted">${i.fecha_vencimiento ? WMS.formatDate(i.fecha_vencimiento) : 'N/A'}</td>
+                  <td style="text-align:center">${(() => { const d = diasVence(i); return d == null ? '—' : `<span class="pro-badge ${d < 0 ? 'alert' : d < 30 ? 'warn' : 'ok'}">${d < 0 ? 'Vencido' : d + ' d'}</span>`; })()}</td>
                   <td><span class="pro-badge ${i.estado==='Disponible'?'ok':'warn'}">${WMS.esc(i.estado || '—')}</span></td>
-                </tr>`).join('') : '<tr><td colspan="7" class="muted" style="text-align:center;padding:20px">Sin stock en ninguna ubicación</td></tr>'}
+                </tr>`).join('') : '<tr><td colspan="8" class="muted" style="text-align:center;padding:20px">Sin stock en ninguna ubicación</td></tr>'}
               </tbody>
+              ${conStock.length ? `<tfoot><tr style="background:var(--table-header-bg);font-weight:800">
+                <td colspan="2">TOTAL · ${numUbicaciones} ubicación(es)</td>
+                <td style="text-align:center;color:var(--accent)">${WMS.formatNum(stkCajas)}</td>
+                <td style="text-align:center;color:#6d28d9">${WMS.formatNum(stkSaldos)}</td>
+                <td style="text-align:center">${WMS.formatNum(stockActual)}</td><td colspan="3"></td></tr></tfoot>` : ''}
             </table>
           </div>
         </div>
         <div class="pro-chart-card" style="margin-bottom:20px;">
           <div class="pro-chart-title">
-            <span><i class="fa-solid fa-chart-bar" style="color:var(--accent);margin-right:8px"></i>Ingresos vs Despachos por día (${upc > 1 ? 'cajas' : 'unidades'})</span>
+            <span><i class="fa-solid fa-chart-line" style="color:var(--accent);margin-right:8px"></i>Ingresos vs Despachos por día (${upc > 1 ? 'cajas' : 'unidades'})</span>
           </div>
           <div class="pro-chart-container" style="height:260px">
             <canvas id="sr-mov-chart"></canvas>
@@ -291,21 +301,25 @@ WMS_MODULES.inventario = {
     }
 
     const serie = campo => fechas.map(f => aCaja(porDia[f][campo]));
+    const linea = (label, data, color, relleno = false) => ({ label, data, borderColor: color, backgroundColor: color + '22',
+      fill: relleno, cubicInterpolationMode: 'monotone', borderWidth: relleno ? 2.5 : 1.5, pointRadius: 3, pointHoverRadius: 6, borderDash: relleno ? [] : [5, 4] });
     const hay   = campo => fechas.some(f => porDia[f][campo] > 0);
     const datasets = [
-      { label: 'Ingresos',  data: serie('ingreso'),  backgroundColor: '#22c55e', borderRadius: 4 },
-      { label: 'Despachos', data: serie('despacho'), backgroundColor: '#ef4444', borderRadius: 4 },
+      // Gráfico LINEAL (pedido de Camilo, 2026-10-07): ingresos vs despachos por día
+      linea('Ingresos', serie('ingreso'), '#22c55e', true),
+      linea('Despachos', serie('despacho'), '#ef4444', true),
     ];
-    if (hay('devolucion'))  datasets.push({ label: 'Devoluciones', data: serie('devolucion'),  backgroundColor: '#8b5cf6', borderRadius: 4 });
-    if (hay('ajusteMas'))   datasets.push({ label: 'Ajuste +',     data: serie('ajusteMas'),   backgroundColor: '#86efac', borderRadius: 4 });
-    if (hay('ajusteMenos')) datasets.push({ label: 'Ajuste −',     data: serie('ajusteMenos'), backgroundColor: '#fca5a5', borderRadius: 4 });
+    if (hay('devolucion'))  datasets.push(linea('Devoluciones', serie('devolucion'), '#8b5cf6'));
+    if (hay('ajusteMas'))   datasets.push(linea('Ajuste +', serie('ajusteMas'), '#86efac'));
+    if (hay('ajusteMenos')) datasets.push(linea('Ajuste −', serie('ajusteMenos'), '#fca5a5'));
     const unidad = upc > 1 ? 'cj' : 'und';
 
     this._invMovChart = new Chart(ctx, {
-      type: 'bar',
+      type: 'line',
       data: { labels: fechas.map(f => WMS.formatDate(f)), datasets },
       options: {
         responsive:true, maintainAspectRatio:false,
+        interaction:{ mode:'index', intersect:false },
         plugins:{ legend:{position:'top'}, tooltip:{
           backgroundColor:'#1a2340', titleColor:'#fff', bodyColor:'rgba(255,255,255,.8)', padding:10, cornerRadius:8,
           callbacks: {
