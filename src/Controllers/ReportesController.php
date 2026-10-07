@@ -379,13 +379,28 @@ class ReportesController extends BaseController
         // ── Un "despacho" del reporte = una orden certificada. Se arma el detalle
         // por línea (quién separó, hora, lote, ubicación de origen) y el/los
         // orden_ids para poder ver/imprimir la remisión desde la pantalla. ──────
-        $despachos = $ordenes->map(function ($orden) {
+        // Hora real de separación por (orden, producto): último movimiento de picking
+        // en el kardex (igual que PickingController::listar). updated_at se reescribe
+        // al certificar/empacar y dejaba todas las líneas con la misma hora.
+        $horaLinea = [];
+        foreach ($ordenes->pluck('id')->chunk(1000) as $ids) {
+            Capsule::table('movimiento_inventarios')
+                ->where('referencia_tipo', 'OrdenPicking')
+                ->where('tipo_movimiento', 'Picking')
+                ->whereIn('referencia_id', $ids->all())
+                ->groupBy('referencia_id', 'producto_id')
+                ->selectRaw('referencia_id, producto_id, MAX(created_at) as hora')
+                ->get()
+                ->each(function ($m) use (&$horaLinea) { $horaLinea[$m->referencia_id . '-' . $m->producto_id] = $m->hora; });
+        }
+
+        $despachos = $ordenes->map(function ($orden) use ($horaLinea) {
             $orden->numero_despacho  = $orden->numero_pedido ?? $orden->numero_orden;
             $orden->fecha_movimiento = $orden->fecha_certificacion;
             $orden->estado           = $orden->estado_despacho ?: 'Certificada';
             $orden->total_bultos     = $orden->detalles->count();
             $orden->orden_ids        = [$orden->id];
-            $orden->detalle_lineas   = $orden->detalles->map(function ($linea) use ($orden) {
+            $orden->detalle_lineas   = $orden->detalles->map(function ($linea) use ($orden, $horaLinea) {
                 // Solicitado viene en CAJAS y separado en UNIDADES (convención de picking,
                 // ver confirmarConsolidado); todo se lleva a unidades y se parte en cajas + saldo.
                 $upc = (float)($linea->producto->factor_udm ?? 0) > 0
@@ -413,7 +428,7 @@ class ReportesController extends BaseController
                     // de "liberador" distinto al auxiliar que picking la línea.
                     'separado_por'         => $linea->auxiliar->nombre ?? '—',
                     'ubicacion_origen'     => $linea->ubicacion->codigo ?? '—',
-                    'hora'                 => $linea->updated_at,
+                    'hora'                 => $horaLinea[$orden->id . '-' . $linea->producto_id] ?? null,
                 ];
             })->values();
             return $orden;

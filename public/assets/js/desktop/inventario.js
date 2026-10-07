@@ -138,7 +138,7 @@ WMS_MODULES.inventario = {
       const upc = (+it0.factor_udm > 0) ? +it0.factor_udm
                 : (+it0.unidades_caja > 0 ? +it0.unidades_caja : (this._srUpc || 1));
       this._srUpcActual = upc;
-      const stkCajas  = upc > 1 ? Math.floor(stockActual / upc) : 0;
+      const stkCajas  = Math.floor(stockActual / upc + 1e-9);
       const stkSaldos = Math.round((stockActual - stkCajas * upc) * 1000) / 1000;
       const numUbicaciones = new Set(stockItems.map(i => i.ubicacion_codigo || i.ubicacion).filter(Boolean)).size;
       const conVencer      = stockItems.filter(i => {
@@ -167,8 +167,8 @@ WMS_MODULES.inventario = {
                 <tr>
                   <td><span class="pro-badge info">${WMS.esc(i.ubicacion_codigo || i.ubicacion || '—')}</span></td>
                   <td class="muted">${WMS.esc(i.lote || '—')}</td>
-                  <td style="text-align:center;color:var(--accent)">${i.cantidad_cajas ?? '—'}</td>
-                  <td style="text-align:center;color:#6d28d9">${i.saldos ?? '—'}</td>
+                  <td style="text-align:center;color:var(--accent)">${WMS.formatNum(Math.floor(+i.cantidad / upc + 1e-9))}</td>
+                  <td style="text-align:center;color:#6d28d9">${WMS.formatNum(Math.round((+i.cantidad - Math.floor(+i.cantidad / upc + 1e-9) * upc) * 1000) / 1000)}</td>
                   <td style="text-align:center;font-weight:700">${WMS.formatNum(i.cantidad)}</td>
                   <td class="muted">${i.fecha_vencimiento ? WMS.formatDate(i.fecha_vencimiento) : 'N/A'}</td>
                   <td><span class="pro-badge ${i.estado==='Disponible'?'ok':'warn'}">${WMS.esc(i.estado || '—')}</span></td>
@@ -362,15 +362,13 @@ WMS_MODULES.inventario = {
       const porProducto = {};
       items.forEach(s => {
         const key = s.producto_id || s.ean || s.descripcion || s.codigo_interno;
-        const upc = Math.max(1, parseInt(s.factor_udm || s.unidades_caja || 1));
+        // Cajas + saldos SIEMPRE desde la cantidad (2026-10-07): las columnas guardadas
+        // pueden venir en 0/null o desfasadas, y una ubicación con menos de una caja
+        // salía con "—" en cajas y saldos aunque tuviera inventario.
+        const upc = (+s.factor_udm > 0) ? +s.factor_udm : Math.max(1, +s.unidades_caja || 1);
         const cant = parseFloat(s.cantidad || 0);
-        let cantCajas = parseInt(s.cantidad_cajas || 0);
-        let saldos = parseFloat(s.saldos || 0);
-
-        if ((cantCajas <= 0 || isNaN(cantCajas)) && cant > 0) {
-          cantCajas = Math.floor(cant / upc);
-          saldos = cant % upc;
-        }
+        const cantCajas = Math.floor(cant / upc + 1e-9);
+        const saldos = Math.round((cant - cantCajas * upc) * 1000) / 1000;
 
         if (!porProducto[key]) {
           porProducto[key] = {
@@ -539,6 +537,8 @@ WMS_MODULES.inventario = {
             <th>EAN / Código</th>
             <th>Descripción</th>
             <th style="text-align:center">UND/TOTAL</th>
+            <th style="text-align:center">Cajas</th>
+            <th style="text-align:center">Saldos</th>
             <th style="text-align:center">Prom.Venta/mes</th>
             <th style="text-align:center">Días inv.</th>
             <th style="text-align:center">Vida útil prom.</th>
@@ -573,13 +573,15 @@ WMS_MODULES.inventario = {
                   <span class="${p.total<=0?'stock-alert':p.total<_minStk?'stock-warn':'stock-ok'}" style="font-size:1.05rem"
                         title="UND/TOTAL">${WMS.formatNum(p.total)}</span>
                 </td>
+                <td style="text-align:center;color:var(--accent);font-weight:700" title="U/E ${WMS.formatNum(p.upc)}">${WMS.formatNum(p.total_cajas)}</td>
+                <td style="text-align:center;color:#6d28d9;font-weight:700">${WMS.formatNum(Math.round(p.total_sueltos * 1000) / 1000)}</td>
                 <td style="text-align:center" class="muted">${promVenta>0?WMS.formatNum(promVenta):'–'}</td>
                 <td style="text-align:center;font-weight:700;color:var(--accent)">${diasInv}</td>
                 <td style="text-align:center" class="muted">${promFv}</td>
                 <td style="text-align:center"><span class="pro-badge ${stCls}">${stLbl}</span></td>
               </tr>
               <tr id="${detId}" style="display:none">
-                <td colspan="8" style="padding:0 24px 16px 48px;background:#f8faff">
+                <td colspan="10" style="padding:0 24px 16px 48px;background:#f8faff">
                   <div style="border:1px solid var(--border);border-radius:4px;overflow:hidden;margin-top:8px">
                     <table class="erp-table" style="font-size:.77rem">
                       <thead><tr style="background:#f0f4ff">
@@ -598,7 +600,7 @@ WMS_MODULES.inventario = {
                             : l.dias_vencimiento<0 ? 'Vencido'
                             : l.dias_vencimiento+' días';
                           const lUpc = l.upc || 1;
-                          const hasCajas = l.cantidad_cajas > 0;
+                          const hasCajas = l.cantidad > 0;
                           const desgloseTitle = hasCajas
                             ? `${l.cantidad_cajas} cajas × ${lUpc} u/e + ${l.saldos} sueltos`
                             : '';
@@ -623,7 +625,7 @@ WMS_MODULES.inventario = {
                   </div>
                 </td>
               </tr>`;
-            }).join('') || '<tr><td colspan="8" class="muted" style="text-align:center;padding:24px">Sin inventario reportado</td></tr>'  }
+            }).join('') || '<tr><td colspan="10" class="muted" style="text-align:center;padding:24px">Sin inventario reportado</td></tr>'  }
           </tbody>
         </table>
       </div>
