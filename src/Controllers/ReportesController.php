@@ -386,7 +386,20 @@ class ReportesController extends BaseController
             $orden->total_bultos     = $orden->detalles->count();
             $orden->orden_ids        = [$orden->id];
             $orden->detalle_lineas   = $orden->detalles->map(function ($linea) use ($orden) {
+                // Solicitado viene en CAJAS y separado en UNIDADES (convención de picking,
+                // ver confirmarConsolidado); todo se lleva a unidades y se parte en cajas + saldo.
+                $upc = (float)($linea->producto->factor_udm ?? 0) > 0
+                    ? (float)$linea->producto->factor_udm
+                    : max(1, (float)($linea->producto->unidades_caja ?? 1));
+                $solUnd = round((float)$linea->cantidad_solicitada * $upc, 3);
+                $sepUnd = round((float)$linea->cantidad_pickeada, 3);
+                $falUnd = max(0, round($solUnd - $sepUnd, 3));
+                $cs = fn($und) => ['cajas' => floor($und / $upc + 1e-9), 'saldo' => round($und - floor($und / $upc + 1e-9) * $upc, 3), 'und' => $und];
                 return [
+                    'unidades_caja'        => $upc,
+                    'solicitado'           => $cs($solUnd),
+                    'separado'             => $cs($sepUnd),
+                    'faltante'             => $cs($falUnd),
                     'orden_id'             => $orden->id,
                     'numero_pedido'        => $orden->numero_pedido ?? $orden->numero_orden,
                     'producto_codigo'      => $linea->producto->codigo_interno ?? '—',

@@ -1218,36 +1218,68 @@ WMS_MODULES.reportes = {
   verDetalleDespacho(despachoId) {
     const d = (this._despachosCache || {})[despachoId];
     const lineas = d?.detalle_lineas || [];
+    // Solicitado / separado / faltante en cajas + saldo + unidades (2026-10-07)
+    const n = v => WMS.formatNum(Math.round((parseFloat(v) || 0) * 1000) / 1000);
+    const th = 'padding:6px 8px;text-align:right;white-space:nowrap;';
+    const grp = (l, k, color) => {
+      const g = l[k] || {}; const c = color && g.und > 0 ? `color:${color};font-weight:700;` : '';
+      return `<td style="padding:5px 8px;text-align:right;${c}border-left:1px solid var(--border-light);">${n(g.cajas)}</td>
+              <td style="padding:5px 8px;text-align:right;${c}">${n(g.saldo)}</td>
+              <td style="padding:5px 8px;text-align:right;font-weight:700;${c}">${n(g.und)}</td>`;
+    };
+    const tot = k => ['cajas', 'saldo', 'und'].map(f => lineas.reduce((a, l) => a + (parseFloat(l[k]?.[f]) || 0), 0));
+    const totCells = (k, color) => tot(k).map((v, i) => `<td style="padding:6px 8px;text-align:right;${i === 0 ? 'border-left:1px solid var(--border);' : ''}${color && tot(k)[2] > 0 ? 'color:' + color + ';' : ''}">${n(v)}</td>`).join('');
+    const [ts, tsep, tf] = [tot('solicitado')[2], tot('separado')[2], tot('faltante')[2]];
+    const und = v => `${n(v)} <small style="font-size:.7rem;color:var(--muted)">und</small>`;
+    const kpi = (lbl, txt, color) => `<div style="flex:1;min-width:150px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px">
+        <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase">${lbl}</div>
+        <div style="font-size:1.25rem;font-weight:800;color:${color}">${txt}</div></div>`;
     const body = lineas.length ? `
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        ${kpi('Solicitado', und(ts), 'var(--text)')}${kpi('Separado', und(tsep), 'var(--ok)')}${kpi('Faltante', und(tf), tf > 0 ? 'var(--danger)' : 'var(--ok)')}
+        ${kpi('Cumplimiento', (ts ? (tsep / ts * 100).toFixed(1) : '100.0') + '%', 'var(--accent)')}
+      </div>
       <div style="overflow-x:auto;">
         <table style="width:100%;border-collapse:collapse;font-size:12px;">
           <thead><tr style="background:var(--btn-neutral);">
             <th style="padding:6px 8px;text-align:left;">Pedido</th>
             <th style="padding:6px 8px;text-align:left;">Producto</th>
             <th style="padding:6px 8px;text-align:left;">Lote</th>
-            <th style="padding:6px 8px;text-align:right;">Solicitado</th>
-            <th style="padding:6px 8px;text-align:right;">Separado</th>
-            <th style="padding:6px 8px;text-align:left;">Separado por</th>
+            <th style="padding:6px 8px;text-align:right;">U/E</th>
+            <th colspan="3" style="padding:6px 8px;text-align:center;border-left:1px solid var(--border);">Solicitado</th>
+            <th colspan="3" style="padding:6px 8px;text-align:center;border-left:1px solid var(--border);color:var(--ok);">Separado</th>
+            <th colspan="3" style="padding:6px 8px;text-align:center;border-left:1px solid var(--border);color:var(--danger);">Faltante</th>
+            <th style="padding:6px 8px;text-align:left;border-left:1px solid var(--border);">Separado por</th>
             <th style="padding:6px 8px;text-align:left;">Ubicación origen</th>
             <th style="padding:6px 8px;text-align:left;">Hora</th>
+          </tr>
+          <tr style="background:var(--btn-neutral);font-size:11px;color:var(--muted);">
+            <th colspan="4"></th>
+            ${['Cajas', 'Saldo', 'Und'].map((t, i) => `<th style="${th}${i === 0 ? 'border-left:1px solid var(--border);' : ''}">${t}</th>`).join('').repeat(3)}
+            <th colspan="3" style="border-left:1px solid var(--border);"></th>
           </tr></thead>
           <tbody>
             ${lineas.map(l => `<tr style="border-bottom:1px solid var(--border-light);">
               <td style="padding:5px 8px;">${WMS.esc(l.numero_pedido || '-')}</td>
               <td style="padding:5px 8px;">${WMS.esc(l.producto_nombre)} <span style="color:var(--text-muted);font-family:monospace;">(${WMS.esc(l.producto_codigo)})</span></td>
               <td style="padding:5px 8px;font-family:monospace;">${WMS.esc(l.lote)}</td>
-              <td style="padding:5px 8px;text-align:right;">${l.cantidad_solicitada}</td>
-              <td style="padding:5px 8px;text-align:right;">${l.cantidad_pickeada}</td>
-              <td style="padding:5px 8px;">${WMS.esc(l.separado_por)}</td>
+              <td style="padding:5px 8px;text-align:right;color:var(--muted);">${n(l.unidades_caja)}</td>
+              ${grp(l, 'solicitado')}${grp(l, 'separado')}${grp(l, 'faltante', 'var(--danger)')}
+              <td style="padding:5px 8px;border-left:1px solid var(--border-light);">${WMS.esc(l.separado_por)}</td>
               <td style="padding:5px 8px;">${WMS.esc(l.ubicacion_origen)}</td>
               <td style="padding:5px 8px;">${WMS.formatDateTime ? WMS.formatDateTime(l.hora) : (l.hora || '-')}</td>
             </tr>`).join('')}
           </tbody>
+          <tfoot><tr style="background:var(--table-header-bg);font-weight:800;">
+            <td colspan="4" style="padding:6px 8px;">TOTAL (${lineas.length} líneas)</td>
+            ${totCells('solicitado')}${totCells('separado')}${totCells('faltante', 'var(--danger)')}
+            <td colspan="3" style="border-left:1px solid var(--border);"></td>
+          </tr></tfoot>
         </table>
       </div>` : '<div class="m-empty">Sin líneas de detalle para este despacho</div>';
 
     WMS.showModal(`Detalle despacho ${WMS.esc(d?.numero_despacho || '')}`, body,
-      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')"><i class="fa-solid fa-xmark"></i> Cerrar</button>`, 'xl');
+      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')"><i class="fa-solid fa-xmark"></i> Cerrar</button>`, 'full');
   },
 
   // Reutiliza el mismo endpoint de remisión-múltiple que ya usa el módulo de
