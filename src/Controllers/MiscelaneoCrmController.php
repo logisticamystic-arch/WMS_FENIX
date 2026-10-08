@@ -150,10 +150,10 @@ class MiscelaneoCrmController extends BaseController
         $miscId = $args['id'];
         try {
             $trackings = DB::table('misc_tracking')
-                ->leftJoin('usuarios', 'usuarios.id', '=', 'misc_tracking.usuario_id')
+                ->leftJoin('personal', 'personal.id', '=', 'misc_tracking.usuario_id')
                 ->select(
                     'misc_tracking.*',
-                    'usuarios.nombre as usuario_nombre'
+                    'personal.nombre as usuario_nombre'
                 )
                 ->where('misc_tracking.miscelaneo_id', $miscId)
                 ->orderBy('misc_tracking.created_at', 'desc')

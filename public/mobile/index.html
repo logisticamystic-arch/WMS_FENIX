@@ -636,7 +636,7 @@ const MWMS = {
     }
     this.loading(false);
 
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota' }).format(new Date());
 
     document.getElementById('m-content').innerHTML = `
       <div class="op-view" style="padding-bottom:90px;">
@@ -1036,7 +1036,7 @@ const MWMS = {
     document.getElementById('m-title').textContent = 'Historial Preoperacional';
     this.loading(true);
     try {
-      const r = await mApi('GET', '/preoperacional?fecha_inicio=' + this._pvFechaHace(30) + '&fecha_fin=' + new Date().toISOString().slice(0,10));
+      const r = await mApi('GET', '/preoperacional?fecha_inicio=' + this._pvFechaHace(30) + '&fecha_fin=' + new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota' }).format(new Date()));
       const rows = r.data || [];
       document.getElementById('m-content').innerHTML = `
         <div class="op-view">
@@ -7499,7 +7499,7 @@ const MWMS = {
         <button class="m-btn success full" onclick="MWMS.saveCita()" style="margin-top:20px;">Guardar Cita</button>
         <button class="m-btn secondary full" onclick="MWMS.viewCitas()" style="margin-top:8px;">Cancelar</button>
       </div>`;
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota' }).format(new Date());
     document.getElementById('m-cita-fecha').value = today;
   },
 
@@ -10455,7 +10455,7 @@ const MWMS = {
     document.getElementById('m-title').textContent = this._isPackingView ? 'Packing' : 'Certificar';
     document.getElementById('m-content').innerHTML = '<div class="pull-indicator"><i class="fa-solid fa-spinner fa-spin"></i> Cargando...</div>';
     try {
-      const hoy = new Date().toISOString().slice(0, 10);
+      const hoy = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota' }).format(new Date());
       // Consultar tres fuentes en paralelo
       const [rArchivos, rOrdenes, rVista] = await Promise.allSettled([
         mApi('GET', '/planillas'),
@@ -11904,7 +11904,7 @@ const MWMS = {
 
   _miscRenderOdcForm() {
     const area = document.getElementById('misc-mobile-area');
-    const fecha = document.getElementById('mm-odc-fecha')?.value || new Date().toISOString().split('T')[0];
+    const fecha = document.getElementById('mm-odc-fecha')?.value || new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota' }).format(new Date());
     const prov = document.getElementById('mm-odc-prov')?.value || '';
     const obs = document.getElementById('mm-odc-obs')?.value || '';
 

@@ -39,7 +39,7 @@ WMS_MODULES.preoperacional = {
     }
     WMS.spinnerHide();
 
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = WMS.getToday();
 
     WMS.setContent(`
       <div class="op-view" style="max-width:820px;margin:0 auto;">

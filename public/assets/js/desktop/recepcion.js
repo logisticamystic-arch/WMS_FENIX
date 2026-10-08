@@ -1590,7 +1590,7 @@ WMS_MODULES.recepcion = {
   // ══════════════════════════════════════════════════════════════════════
   async show_sin_odc(silent = false) {
     if (!this._sinOdcFiltros) {
-      const hoy = new Date().toISOString().slice(0, 10);
+      const hoy = WMS.getToday();
       this._sinOdcFiltros = { desde: hoy, hasta: hoy };
     }
     WMS.setToolbar(`
@@ -1689,7 +1689,7 @@ WMS_MODULES.recepcion = {
   },
 
   _hoyFiltroSinODC() {
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = WMS.getToday();
     this._sinOdcFiltros = { desde: hoy, hasta: hoy };
     this.show_sin_odc();
   },
