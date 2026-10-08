@@ -6025,6 +6025,7 @@ WMS_MODULES.picking = {
         const key = r.producto_codigo || r.producto_nombre || 'Desconocido';
         if (!porReferencia[key]) {
           porReferencia[key] = {
+            producto_id: r.producto_id,
             codigo: r.producto_codigo || '-',
             nombre: r.producto_nombre || '-',
             unidades_caja: this._agotUpc(r),
@@ -6048,6 +6049,10 @@ WMS_MODULES.picking = {
       });
 
       const refArray = Object.values(porReferencia).sort((a,b) => b.cajas_faltantes - a.cajas_faltantes);
+      // Justificación por referencia (2026-10-08): una por referencia y DÍA; en el
+      // consolidado se digita la del día "hasta" del filtro.
+      let obsFin = {};
+      try { obsFin = (await API.get('/picking/agotados/observaciones', 'fecha=' + f.fin)).data || {}; } catch (e) { obsFin = {}; }
 
       // ── MATRIZ DE CLIENTES Y SUS AGOTADOS ──
       const porCliente = {};
@@ -6272,6 +6277,9 @@ WMS_MODULES.picking = {
           <!-- SECTOR DE PESTAÑAS NAVEGABLES DEL DASHBOARD -->
           <div class="card" style="overflow:hidden;">
             <div style="background:var(--table-header-bg);border-bottom:1px solid var(--border);padding:0 12px;display:flex;gap:4px;overflow-x:auto;">
+              <button class="agot-tab-btn" onclick="WMS_MODULES.picking._switchAgotTab('tab-dia', this); WMS_MODULES.picking._agotCargarDia()">
+                <i class="fa-solid fa-sun" style="color:var(--warn);"></i> Agotados del Día
+              </button>
               <button class="agot-tab-btn active" onclick="WMS_MODULES.picking._switchAgotTab('tab-graficos', this)">
                 <i class="fa-solid fa-chart-pie" style="color:var(--info);"></i> Tablero & Gráficos
               </button>
@@ -6354,6 +6362,18 @@ WMS_MODULES.picking = {
               </div>
             </div>
 
+            <!-- AGOTADOS DEL DÍA (2026-10-08): referencia, solicitado, pendiente y justificación -->
+            <div id="tab-dia" class="agot-tab-pane" style="display:none;padding:16px;">
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+                <label class="form-label" style="margin:0;">Día</label>
+                <input type="date" id="agot-dia-fecha" class="form-control form-control-sm" style="width:160px;" value="${WMS.getToday()}" onchange="WMS_MODULES.picking._agotCargarDia()">
+                <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.picking._agotCopiarDia()"><i class="fa-solid fa-copy"></i> Copiar texto</button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.picking._agotImprimirDia()"><i class="fa-solid fa-print"></i> Imprimir</button>
+                <span style="font-size:11px;color:var(--muted);">Las observaciones se digitan en "Consolidado por Referencias" (filtro hasta = ese día).</span>
+              </div>
+              <div id="agot-dia-body"><div class="spinner sm" style="margin:20px auto;display:block;"></div></div>
+            </div>
+
             <!-- CONTENIDO PESTAÑA 2: CONSOLIDADO POR REFERENCIAS -->
             <div id="tab-referencias" class="agot-tab-pane" style="display:none;padding:0;">
               <div class="table-container" style="overflow-x:auto;">
@@ -6368,6 +6388,7 @@ WMS_MODULES.picking = {
                       <th style="text-align:center;">Faltante (UND/T)</th>
                       <th style="text-align:center;">Clientes Afectados</th>
                       <th>Causa Principal</th>
+                      <th style="min-width:260px;">Observación / justificación (${WMS.formatDate(f.fin)})</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -6387,8 +6408,14 @@ WMS_MODULES.picking = {
                           </span>
                         </td>
                         <td style="font-size:10.5px;color:var(--muted);">${WMS.esc(causaTop)}</td>
+                        <td>
+                          ${r.producto_id ? `<textarea class="form-control form-control-sm agot-obs" rows="1" maxlength="1000" data-prod="${r.producto_id}" data-fecha="${f.fin}"
+                            placeholder="Escriba la justificación…" style="min-width:240px;resize:vertical;font-size:11px;"
+                            onchange="WMS_MODULES.picking._agotGuardarObs(this)">${WMS.esc(obsFin[r.producto_id]?.observacion || '')}</textarea>
+                          <div class="agot-obs-meta" style="font-size:9.5px;color:var(--muted);margin-top:2px;">${obsFin[r.producto_id] ? `${WMS.esc(obsFin[r.producto_id].usuario || '')} · ${WMS.formatDateTime(obsFin[r.producto_id].updated_at)}` : ''}</div>` : '—'}
+                        </td>
                       </tr>`;
-                    }).join('') || '<tr><td colspan="8" class="table-empty">Sin referencias en consolidado</td></tr>'}
+                    }).join('') || '<tr><td colspan="9" class="table-empty">Sin referencias en consolidado</td></tr>'}
                   </tbody>
                 </table>
               </div>
@@ -6590,6 +6617,94 @@ WMS_MODULES.picking = {
       console.error(e);
       WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error cargando agotados</p></div>');
     }
+  },
+
+  /** Guarda la justificación de una referencia (vacía = se borra). */
+  async _agotGuardarObs(el) {
+    const meta = el.parentElement.querySelector('.agot-obs-meta');
+    try {
+      await API.put('/picking/agotados/observaciones', { producto_id: +el.dataset.prod, fecha: el.dataset.fecha, observacion: el.value.trim() });
+      if (meta) meta.innerHTML = el.value.trim() ? `<span style="color:var(--ok);"><i class="fa-solid fa-check"></i> Guardada</span>` : 'Sin observación';
+    } catch (e) {
+      WMS.toast('error', e.message || 'No se pudo guardar la observación');
+    }
+  },
+
+  /** Agotados de UN día por referencia: solicitado, pendiente y justificación. */
+  async _agotCargarDia() {
+    const cont = document.getElementById('agot-dia-body');
+    if (!cont) return;
+    const fecha = document.getElementById('agot-dia-fecha')?.value || WMS.getToday();
+    const f = this._agotFilters || {};
+    cont.innerHTML = '<div class="spinner sm" style="margin:20px auto;display:block;"></div>';
+    try {
+      const qs = `fecha_inicio=${fecha}&fecha_fin=${fecha}&sucursal_entrega=${encodeURIComponent(f.sucursal || '')}&incluir_conciliacion=${f.incluirConciliacion ? '1' : '0'}`;
+      const [rA, rO] = await Promise.all([API.get('/picking/agotados', qs), API.get('/picking/agotados/observaciones', 'fecha=' + fecha)]);
+      const rows = (rA.data && rA.data.rows) || [];
+      const obs = rO.data || {};
+      const por = {};
+      rows.forEach(r => {
+        const k = r.producto_id || r.producto_codigo;
+        const upc = this._agotUpc(r);
+        por[k] = por[k] || { producto_id: r.producto_id, codigo: r.producto_codigo || '-', nombre: r.producto_nombre || '-', upc, sol: 0, pend: 0 };
+        por[k].sol  += (parseFloat(r.cantidad_solicitada) || 0);
+        por[k].pend += (parseFloat(r.cantidad_faltante) || 0);
+      });
+      const lista = Object.values(por).sort((a, b) => b.pend - a.pend);
+      const esHoy = fecha === WMS.getToday();
+      const saludo = esHoy ? 'Buenos días, estos son los agotados del día de hoy'
+                           : `Buenos días, estos son los agotados del día ${WMS.formatDate(fecha)}`;
+      const cant = (cj, upc) => `<b>${WMS.formatNum(cj)}</b> cj${upc > 1 ? `<div style="font-size:10px;color:var(--muted);">${WMS.formatNum(Math.round(cj * upc * 1000) / 1000)} und</div>` : ''}`;
+      this._agotDia = { fecha, saludo, lista, obs };
+      cont.innerHTML = `
+        <div id="agot-dia-imprimible">
+          <div style="background:var(--info-bg);border:1px solid var(--accent);border-radius:10px;padding:14px 18px;margin-bottom:12px;">
+            <div style="font-size:1.1rem;font-weight:800;color:var(--text);"><i class="fa-solid fa-sun" style="color:var(--warn);"></i> ${WMS.esc(saludo)}</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px;">${WMS.formatDate(fecha)} · ${lista.length} referencia(s) agotada(s)${f.sucursal ? ' · ' + WMS.esc(f.sucursal) : ''}</div>
+          </div>
+          <div class="table-container" style="overflow-x:auto;">
+            <table class="erp-table" style="font-size:12px;">
+              <thead><tr>
+                <th>Código</th><th>Referencia</th>
+                <th style="text-align:center;">Cant. solicitada</th><th style="text-align:center;">Cant. pendiente</th>
+                <th>Observaciones</th>
+              </tr></thead>
+              <tbody>${lista.map(x => `<tr>
+                <td style="font-family:monospace;font-weight:700;color:var(--accent2);">${WMS.esc(x.codigo)}</td>
+                <td style="font-weight:700;">${WMS.esc(x.nombre)}</td>
+                <td style="text-align:center;">${cant(x.sol, x.upc)}</td>
+                <td style="text-align:center;color:var(--danger);">${cant(x.pend, x.upc)}</td>
+                <td style="font-size:11.5px;">${obs[x.producto_id] ? WMS.esc(obs[x.producto_id].observacion) : '<span style="color:var(--muted);">Sin observación</span>'}</td>
+              </tr>`).join('') || '<tr><td colspan="5" class="table-empty">No hubo agotados este día</td></tr>'}</tbody>
+            </table>
+          </div>
+        </div>`;
+    } catch (e) {
+      cont.innerHTML = `<div class="m-empty"><i class="fa-solid fa-triangle-exclamation"></i><p>${WMS.esc(e.message || 'Error cargando los agotados del día')}</p></div>`;
+    }
+  },
+
+  /** Texto plano del informe del día (para pegar en WhatsApp / correo). */
+  async _agotCopiarDia() {
+    const d = this._agotDia;
+    if (!d) return;
+    const fmt = (cj, upc) => `${WMS.formatNum(cj)} cj` + (upc > 1 ? ` (${WMS.formatNum(Math.round(cj * upc * 1000) / 1000)} und)` : '');
+    const txt = [d.saludo + ' (' + WMS.formatDate(d.fecha) + '):', '']
+      .concat(d.lista.map(x => `• ${x.codigo} ${x.nombre} — solicitado ${fmt(x.sol, x.upc)}, pendiente ${fmt(x.pend, x.upc)}` + (d.obs[x.producto_id] ? ` — ${d.obs[x.producto_id].observacion}` : '')))
+      .join('\n');
+    try { await navigator.clipboard.writeText(txt); WMS.toast('success', 'Texto copiado'); }
+    catch (e) { WMS.toast('warning', 'No se pudo copiar automáticamente'); }
+  },
+
+  _agotImprimirDia() {
+    const el = document.getElementById('agot-dia-imprimible');
+    if (!el) return;
+    const w = window.open('', '_blank');
+    if (!w) return WMS.toast('warning', 'Permita ventanas emergentes para imprimir');
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Agotados del día</title>
+      <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse;font-size:12px}
+      th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}th{background:#f1f5f9}</style></head><body>${el.innerHTML}</body></html>`);
+    w.document.close(); w.focus(); w.print();
   },
 
   _switchAgotTab(tabId, btnEl) {

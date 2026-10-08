@@ -696,6 +696,8 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
         $group->post('/confirmar-consolidado', [\App\Controllers\PickingController::class, 'confirmarConsolidado']);
         $group->post('/marcar-agotado-consolidado', [\App\Controllers\PickingController::class, 'marcarAgotadoConsolidado']);
         $group->get('/agotados',                    [\App\Controllers\PickingController::class, 'getAgotados']);
+        $group->get('/agotados/observaciones',      [\App\Controllers\PickingController::class, 'getAgotadosObservaciones']);
+        $group->put('/agotados/observaciones',      [\App\Controllers\PickingController::class, 'guardarAgotadoObservacion']);
         $group->post('/asignar-consolidado', [\App\Controllers\PickingController::class, 'asignarConsolidado']);
         $group->post('/assign', [\App\Controllers\PickingController::class, 'assignLines']);
         $group->post('/transfer', [\App\Controllers\PickingController::class, 'transferTasks']);

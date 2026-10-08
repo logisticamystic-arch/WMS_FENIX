@@ -54,9 +54,15 @@ class PickingController extends BaseController
                     ->whereIn('orden_pickings.estado', ['Pendiente', 'EnProceso'])
                     ->orWhereDate('orden_pickings.fecha_movimiento', date('Y-m-d'))
                 ))
-            ->when($params['estado'] ?? null, function($q, $e) {
+            ->when($params['estado'] ?? null, function($q, $e) use ($params) {
                 if (strpos($e, ',') !== false) {
                     $q->whereIn('estado', explode(',', $e));
+                } elseif ($e === 'Pendiente' && !empty($params['sin_auxiliar'])) {
+                    // Modal Asignar: también pedidos ya en curso con líneas Pendiente sin
+                    // auxiliar (ej. referencias de una 2ª importación en un ambiente que
+                    // nadie trabaja aún) — antes quedaban invisibles (2026-10-08).
+                    $q->where(fn($sq) => $sq->where('estado', 'Pendiente')
+                        ->orWhereHas('detalles', fn($dq) => $dq->where('estado', 'Pendiente')->whereNull('auxiliar_id')));
                 } else {
                     $q->where('estado', $e);
                 }
@@ -4337,16 +4343,43 @@ class PickingController extends BaseController
                     try {
                         if ($modo === 'confirmar') {
                             Capsule::transaction(function () use (
-                                $lineasNuevas, $ordenIdReuso, $cleanNumber, $ambienteDeUbicacion
+                                $lineasNuevas, $ordenIdReuso, $cleanNumber, $ambienteDeUbicacion, $user, $r
                             ) {
                                 $ordenReuso  = OrdenPicking::find($ordenIdReuso);
                                 // Si la orden ya está en curso (no 'Pendiente'), la línea nueva
                                 // nace 'EnProceso' — no debe quedar invisible para el auxiliar que
                                 // ya tiene el ambiente/pedido asignado (regla de negocio vigente:
                                 // nunca se marca Faltante automáticamente, ver _reservarStockLineaNueva).
-                                $estadoLinea = ($ordenReuso && $ordenReuso->estado === 'Pendiente') ? 'Pendiente' : 'EnProceso';
+                                $enCurso     = $ordenReuso && $ordenReuso->estado !== 'Pendiente';
+                                // BUG CORREGIDO 2026-10-08 (Planillas 1951-1958, 65 líneas): en orden
+                                // en curso la línea nacía EnProceso SIN auxiliar ni reserva —
+                                // asignarPorAmbiente() solo toma Pendiente, así que nunca salía para
+                                // asignar ni le aparecía a nadie. Ahora hereda el auxiliar que ya
+                                // trabaja ese ambiente en la planilla (mismo criterio que agregarLinea)
+                                // y se reserva stock; si el ambiente no tiene auxiliar, queda
+                                // Pendiente para que sí salga en la asignación.
+                                $auxPorAmb = [];
+                                if ($enCurso) {
+                                    $auxPorAmb = Capsule::table('picking_detalles as pd')
+                                        ->join('orden_pickings as op', 'op.id', '=', 'pd.orden_picking_id')
+                                        ->where('op.empresa_id', $ordenReuso->empresa_id)
+                                        ->where(function ($q) use ($ordenReuso) {
+                                            if (!empty($ordenReuso->planilla_numero)) {
+                                                $q->where('op.planilla_numero', $ordenReuso->planilla_numero);
+                                            } else {
+                                                $q->where('pd.orden_picking_id', $ordenReuso->id);
+                                            }
+                                        })
+                                        ->whereNotNull('pd.auxiliar_id')
+                                        ->orderBy('pd.id')
+                                        ->pluck('pd.auxiliar_id', 'pd.ambiente')->toArray();
+                                }
+                                $idsReservar = [];
                                 foreach ($lineasNuevas as $item) {
-                                    PickingDetalle::create([
+                                    $amb   = $ambienteDeUbicacion($item['fila']['ubicacion'] ?? '') ?: $this->_clasificarAmbiente($item['prod']);
+                                    $auxId = $auxPorAmb[$amb] ?? null;
+                                    $nl = PickingDetalle::create([
+                                        'auxiliar_id'         => $auxId,
                                         'orden_picking_id'    => $ordenIdReuso,
                                         'producto_id'         => $item['prod']->id,
                                         'cantidad_solicitada' => $item['cantidad'],
@@ -4354,12 +4387,16 @@ class PickingController extends BaseController
                                         'devolucion_qty'      => 0,
                                         'costo_unitario'      => 0,
                                         'descuento_porc'      => 0,
-                                        'estado'              => $estadoLinea,
-                                        'ambiente'            => $ambienteDeUbicacion($item['fila']['ubicacion'] ?? '') ?: $this->_clasificarAmbiente($item['prod']),
+                                        'estado'              => ($enCurso && $auxId) ? 'EnProceso' : 'Pendiente',
+                                        'ambiente'            => $amb,
                                         'numero_pedido_ref'   => $item['nfRef'] ?: null,
                                         'unid_pedido_empaque' => $cleanNumber($item['fila']['unid_pedido_empaque'] ?? '0'),
                                         'unid_pedido_total'   => $cleanNumber($item['fila']['unid_pedido_total'] ?? '0'),
                                     ]);
+                                    if ($enCurso && $auxId) $idsReservar[] = $nl->id;
+                                }
+                                if ($idsReservar) {
+                                    $this->_reservarInventarioBatch([$ordenIdReuso], $user, $r, $idsReservar);
                                 }
                             });
                         }
@@ -6562,10 +6599,11 @@ class PickingController extends BaseController
         }
     }
 
-    private function _reservarInventarioBatch(array $ordenIds, object $user, Request $r): void
+    private function _reservarInventarioBatch(array $ordenIds, object $user, Request $r, ?array $lineaIds = null): void
     {
         $now      = date('Y-m-d H:i:s');
         $detalles = PickingDetalle::whereIn('orden_picking_id', $ordenIds)
+            ->when($lineaIds !== null, fn($q) => $q->whereIn('id', $lineaIds ?: [0]))
             ->where('estado', 'EnProceso')
             ->whereNotNull('auxiliar_id')
             ->with('producto:id,unidades_caja,factor_udm')
@@ -6919,8 +6957,9 @@ class PickingController extends BaseController
                     Capsule::table('orden_pickings')->where('id', $ordId)->update($upd);
                 }
 
-                // 7. Reservar inventario
-                $this->_reservarInventarioBatch($ordenIds, $user, $r);
+                // 7. Reservar inventario — solo las líneas asignadas ahora; en pedidos
+                // ya en curso las demás ya tienen su reserva (no duplicar).
+                $this->_reservarInventarioBatch($ordenIds, $user, $r, array_merge([], ...array_values($porAuxiliar)));
 
                 // 8. Log de auditoría
                 Capsule::table('picking_asignaciones_log')->insert([
@@ -10408,6 +10447,50 @@ class PickingController extends BaseController
      * Módulo de agotados: lista picking_faltantes con filtros por fecha, sucursal_entrega
      * y referencia/producto. Soporta exportación CSV con ?export=csv.
      */
+    // ── Justificación de agotados por referencia y día (2026-10-08) ─────────
+    // GET  /picking/agotados/observaciones?fecha=YYYY-MM-DD → {producto_id: {observacion, usuario, updated_at}}
+    // PUT  /picking/agotados/observaciones {producto_id, fecha, observacion}  (vacía = se borra)
+    public function getAgotadosObservaciones(Request $r, Response $res): Response
+    {
+        $user  = $r->getAttribute('user');
+        $fecha = $r->getQueryParams()['fecha'] ?? date('Y-m-d');
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) return $this->error($res, 'Fecha inválida', 422);
+        $rows = Capsule::table('agotados_observaciones as ao')
+            ->leftJoin('personal as pe', 'pe.id', '=', 'ao.usuario_id')
+            ->where('ao.empresa_id', $this->getEffectiveEmpresaId($user, $r))
+            ->where('ao.sucursal_id', $this->getEffectiveSucursalId($user, $r))
+            ->where('ao.fecha', $fecha)
+            ->get(['ao.producto_id', 'ao.observacion', 'pe.nombre as usuario', 'ao.updated_at']);
+        return $this->ok($res, $rows->keyBy('producto_id'));
+    }
+
+    public function guardarAgotadoObservacion(Request $r, Response $res): Response
+    {
+        $user = $r->getAttribute('user');
+        $b    = $r->getParsedBody() ?? [];
+        $prod = (int)($b['producto_id'] ?? 0);
+        $fecha = (string)($b['fecha'] ?? '');
+        $obs  = trim((string)($b['observacion'] ?? ''));
+        if (!$prod || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) return $this->error($res, 'Referencia y fecha son obligatorias', 422);
+        if (mb_strlen($obs) > 1000) return $this->error($res, 'La observación no puede superar 1000 caracteres', 422);
+        $key = [
+            'empresa_id'  => $this->getEffectiveEmpresaId($user, $r),
+            'sucursal_id' => $this->getEffectiveSucursalId($user, $r),
+            'producto_id' => $prod,
+            'fecha'       => $fecha,
+        ];
+        if ($obs === '') {
+            Capsule::table('agotados_observaciones')->where($key)->delete();
+            return $this->ok($res, null, 'Observación eliminada');
+        }
+        $ahora = date('Y-m-d H:i:s');
+        Capsule::table('agotados_observaciones')->updateOrInsert($key, [
+            'observacion' => $obs, 'usuario_id' => $user->id, 'updated_at' => $ahora,
+        ]);
+        Capsule::table('agotados_observaciones')->where($key)->whereNull('created_at')->update(['created_at' => $ahora]);
+        return $this->ok($res, ['producto_id' => $prod, 'fecha' => $fecha, 'observacion' => $obs, 'usuario' => $user->nombre ?? null], 'Observación guardada');
+    }
+
     public function getAgotados(Request $r, Response $res): Response
     {
         $user      = $r->getAttribute('user');
@@ -10448,6 +10531,7 @@ class PickingController extends BaseController
                 'op.planilla_numero',
                 'op.planilla_lote',
                 'op.cliente',
+                'pf.producto_id',
                 'pr.codigo_interno         as producto_codigo',
                 'pr.nombre                 as producto_nombre',
                 'pr.unidades_caja',
