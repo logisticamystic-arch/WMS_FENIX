@@ -1169,9 +1169,9 @@ WMS_MODULES.picking = {
 
     return `
     <tr data-estado="${g.estado}" data-planilla="${WMS.esc(g.planilla)}">
-      <td style="text-align:center;">
+      ${!isDash ? `<td style="text-align:center;">
         <input type="checkbox" class="chk-sel-planilla" data-planilla="${WMS.esc(g.planilla)}" onchange="WMS_MODULES.picking._onTogglePlanillaCheckbox()">
-      </td>
+      </td>` : ''}
       <td>
         <div style="display:flex;align-items:center;justify-content:center;gap:8px;">
           <button class="btn btn-xs btn-light" onclick="WMS_MODULES.picking._togglePlanilla('${WMS.esc(g.planilla)}')" title="Ver detalle">
@@ -1180,21 +1180,10 @@ WMS_MODULES.picking = {
           <span class="badge badge-info" style="font-size:11.5px;font-weight:700;">#${WMS.esc(g.planilla)}</span>
         </div>
       </td>
-      ${!isDash ? `<td style="white-space:nowrap;font-size:12px;font-weight:600;color:var(--info);text-align:center;" title="${WMS.esc(resumenPedidos)}">
+      <td style="white-space:nowrap;font-size:12px;font-weight:600;color:var(--info);text-align:center;" title="${WMS.esc(resumenPedidos)}">
         ${g.ordenes?.[0]?.fecha_requerida ? WMS.formatDate(g.ordenes[0].fecha_requerida) : '—'}
         <div style="font-size:9.5px;color:var(--muted);font-weight:600;">${pedidosInfo.length} pedido${pedidosInfo.length!==1?'s':''} · ${totalRefsPedidos} ref</div>
-      </td>` : `<td style="white-space:nowrap;font-size:12px;font-weight:600;color:var(--info);text-align:center;">
-        ${g.ordenes?.[0]?.fecha_requerida ? WMS.formatDate(g.ordenes[0].fecha_requerida) : '—'}
-        <div style="margin-top:4px;display:flex;flex-direction:column;align-items:center;gap:2px;font-weight:600;">
-          <span style="font-size:9.5px;color:var(--muted);">${pedidosInfo.length} pedido${pedidosInfo.length!==1?'s':''} · ${totalRefsPedidos} ref. total</span>
-          ${pedidosInfo.map(p => {
-            const fvIcon = p.reqFv === true ? '<i class="fa-solid fa-calendar-check" style="color:var(--danger);" title="Fecha de vencimiento: SIEMPRE exigir"></i>' : '';
-            return `<span style="font-size:9.5px;color:var(--text2);background:var(--btn-neutral);border-radius:3px;padding:1px 4px;width:fit-content;display:flex;align-items:center;gap:3px;">
-              <span>Pedido ${WMS.esc(String(p.numero))} · ${p.refs} ref ${fvIcon}</span>
-            </span>`;
-          }).join('')}
-        </div>
-      </td>`}
+      </td>
       <td style="font-size:11px;font-weight:600;text-align:center;">
         <span>${WMS.esc([...g.clientes].join(', ') || '-')}</span>
         ${g.observaciones.size ? `<i class="fa-solid fa-note-sticky" style="color:var(--warn);margin-left:5px;cursor:help;" title="${WMS.esc([...g.observaciones].join(' | '))}"></i>` : ''}
@@ -1220,34 +1209,8 @@ WMS_MODULES.picking = {
       <td class="text-center" title="${iniSep ? 'Primer producto separado: ' + WMS.esc(String(iniSep).replace('T', ' ').slice(0, 19)) : 'El auxiliar aún no ha separado ningún producto'}">
         ${iniSepHora ? `<span style="font-family:monospace;font-size:12px;font-weight:700;">${iniSepHora}</span>` : '<span style="font-size:11px;color:var(--text-muted);">Sin iniciar</span>'}
       </td>`}
-      ${isDash ? `<td style="text-align:center;">
-        <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
-          ${(() => {
-            if (!(WMS.user?.rol === 'Admin' || WMS.user?.rol === 'Supervisor')) return '';
-            const reqEsc = g.ordenes?.[0]?.requiere_escaneo_ubicacion;
-            const escIcon = reqEsc === true
-              ? '<i class="fa-solid fa-map-location-dot" style="color:var(--ok);" title="Escaneo de ubicación: SIEMPRE exigir"></i>'
-              : '<i class="fa-solid fa-map-location-dot" style="color:var(--text-muted);" title="Escaneo de ubicación: NO se exige"></i>';
-            return `<span onclick="event.stopPropagation();WMS_MODULES.picking._configurarEscaneoUbicacionPlanilla('${WMS.esc(g.planilla)}', ${reqEsc === true ? 'true' : reqEsc === false ? 'false' : 'null'})"
-              title="Configurar exigencia de escaneo de ubicación para toda la planilla" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:4px 8px;border-radius:4px;background:var(--table-header-bg);border:1px solid var(--border);width:100%;font-size:10px;font-weight:600;color:var(--text2);">
-              ${escIcon} Ubicación
-            </span>`;
-          })()}
-          ${(() => {
-            if (WMS.user?.rol !== 'Admin' && WMS.user?.rol !== 'SuperAdmin') return '';
-            const reqFv = g.ordenes?.[0]?.requiere_fecha_vencimiento;
-            const fvIcon = reqFv === true
-              ? '<i class="fa-solid fa-calendar-check" style="color:var(--danger);" title="Fecha de vencimiento: SIEMPRE exigir"></i>'
-              : '<i class="fa-solid fa-calendar-xmark" style="color:var(--text-muted);" title="Fecha de vencimiento: NO se exige"></i>';
-            return `<span onclick="event.stopPropagation();WMS_MODULES.picking._configurarFechaVencimientoPlanilla('${WMS.esc(g.planilla)}', ${reqFv === true ? 'true' : reqFv === false ? 'false' : 'null'})"
-              title="Configurar exigencia de fecha de vencimiento para toda la planilla" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:4px 8px;border-radius:4px;background:var(--table-header-bg);border:1px solid var(--border);width:100%;font-size:10px;font-weight:600;color:var(--text2);">
-              ${fvIcon} F. Vence
-            </span>`;
-          })()}
-        </div>
-      </td>` : ''}
-      <td>
-        ${!isDash ? `
+      ${!isDash ? `<td>
+        ${`
           <div class="actions" style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;align-items:center;">
             ${!todasCertificadas ? `
               <button class="btn btn-sm btn-outline-primary" style="font-weight:700;" onclick="WMS_MODULES.picking.abrirModalEditarPedido('${WMS.esc(g.planilla)}')" title="Editar sucursal, observaciones y cantidades">
@@ -1272,15 +1235,11 @@ WMS_MODULES.picking = {
               ${condBtns}
             `}
           </div>
-        ` : `
-          <div class="text-right">
-             ${g.prioridad ? '<span class="badge badge-danger">Alta</span>' : '<span class="badge badge-light">Norm.</span>'}
-          </div>
         `}
-      </td>
+      </td>` : ''}
     </tr>
     <tr id="sub-plan-${WMS.esc(g.planilla)}" style="display:none;background:var(--table-header-bg);" data-estado="${g.estado}">
-      <td colspan="${isDash ? 12 : 9}" style="padding:0 8px 10px 42px;">
+      <td colspan="9" style="padding:0 8px 10px 42px;">
         <div style="border:1px solid var(--border);border-radius:4px;overflow:hidden;background:var(--surface);box-shadow:inset 0 2px 4px rgba(0,0,0,.02)">
           ${g.ordenes && g.ordenes.length > 0 ? (() => {
             const asignados = g.ordenes.filter(o => o.auxiliar?.nombre).length;
@@ -7554,8 +7513,30 @@ WMS_MODULES.picking = {
 
       const tableRows = gruposVis.map(g => this._renderPlanillaRow(g, { isDashboard: true })).join('');
 
+      // 2026-10-08: los filtros (sucursal/auxiliar/planilla/referencia) aplican a
+      // TODAS las secciones, no solo a la tabla de planillas.
+      if (aux_fil || suc_fil || plan_fil || ref_fil) {
+        const okPlan = (plan, ruta) => (!plan_fil || plan === plan_fil)
+          && (!ref_fil || `${plan || ''} ${ruta || ''}`.toLowerCase().includes(ref_fil));
+        const planAct = (d.planillas_activas || []).filter(p => okPlan(p.planilla_numero, p.ruta)
+          && (!suc_fil || (p.sucursal || p.cliente) === suc_fil)
+          && (!aux_fil || (p.auxiliares || []).includes(aux_fil)));
+        const prog = {};
+        planAct.forEach(p => Object.entries(p.ambientes || {}).forEach(([k, a]) => {
+          prog[k] = prog[k] || { c: 0, t: 0 }; prog[k].c += a.c || 0; prog[k].t += a.t || 0;
+        }));
+        d.planillas_activas = planAct;
+        d.progreso_ambiente = prog;
+        d.alertas_faltantes = (d.alertas_faltantes || []).filter(f => okPlan(f.planilla, '') && (!suc_fil || f.sucursal === suc_fil));
+        if (aux_fil) {
+          d.ranking_auxiliares = (d.ranking_auxiliares || []).filter(a => a.nombre === aux_fil);
+          d.ranking_totales = null;
+        }
+      }
+
       this._currentRankingData = d.ranking_auxiliares || [];
       this._currentRankingTotales = d.ranking_totales || null;
+      const dashTab = this._dashTab || 'dash-tab-planillas';
 
       // Tarjetas dinámicas por SUCURSAL (a pedido explícito, 2026-09-07): antes
       // "Por Iniciar/En Ejecución/Terminadas" contaban ÓRDENES por su estado
@@ -7652,9 +7633,22 @@ WMS_MODULES.picking = {
 
   ${this._renderAmbienteDashboardHtml(d)}
 
-  <div style="display:grid;grid-template-columns:1fr;gap:20px;margin:20px 0;">
-    <!-- Alertas de Faltantes (ancho completo y más alto: antes 1/3 de ancho x 300px obligaba a mucho scroll) -->
-    <div class="card" style="border:1px solid var(--danger-bg);">
+  <style>
+    .dash-tab-btn { padding:10px 16px;font-size:12px;font-weight:700;color:var(--muted);background:transparent;border:none;border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:6px; }
+    .dash-tab-btn:hover { color:var(--text);background:var(--btn-neutral); }
+    .dash-tab-btn.active { color:var(--info);border-bottom-color:var(--info);background:var(--surface); }
+  </style>
+  <!-- Secciones por pestaña (2026-10-08): cada proceso en su propia vista, a ancho completo -->
+  <div style="display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--border);background:var(--table-header-bg);border-radius:6px 6px 0 0;padding:0 8px;margin-top:20px;">
+    ${[['dash-tab-planillas', 'fa-list-check', 'var(--info)', `Proceso por Planilla y Tiempos (${gruposVis.length})`],
+       ['dash-tab-faltantes', 'fa-triangle-exclamation', 'var(--danger)', `Faltantes Críticos (${(d.alertas_faltantes||[]).length})`],
+       ['dash-tab-ranking', 'fa-ranking-star', 'var(--warn)', 'Ranking de Productividad']]
+      .map(([id, ic, col, lbl]) => `<button class="dash-tab-btn${dashTab === id ? ' active' : ''}" onclick="WMS_MODULES.picking._switchDashTab('${id}', this)"><i class="fa-solid ${ic}" style="color:${col};"></i> ${lbl}</button>`).join('')}
+  </div>
+
+  <div style="margin:0 0 20px;">
+    <!-- Alertas de Faltantes -->
+    <div class="card dash-tab-pane" id="dash-tab-faltantes" style="border:1px solid var(--danger-bg);${dashTab === 'dash-tab-faltantes' ? '' : 'display:none;'}">
       <div class="card-header" style="background:var(--danger-bg);border-bottom:1px solid var(--danger-bg);"><span class="card-title text-danger"><i class="fa-solid fa-triangle-exclamation"></i> Alerta de Faltantes Críticos</span></div>
       <div class="table-container" style="max-height:70vh;overflow-y:auto;">
         <table class="erp-table" style="font-size:11px;width:100%;">
@@ -7672,7 +7666,7 @@ WMS_MODULES.picking = {
     </div>
 
     <!-- Ranking Auxiliares (Multimétrica) -->
-    <div class="card">
+    <div class="card dash-tab-pane" id="dash-tab-ranking" style="${dashTab === 'dash-tab-ranking' ? '' : 'display:none;'}">
       <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
         <span class="card-title"><i class="fa-solid fa-ranking-star" style="color:var(--warn);"></i> Ranking de Productividad Auxiliar</span>
         <div style="display:flex; gap:10px; font-size:11px; color:var(--text-muted); font-weight:600; align-items:center;">
@@ -7706,19 +7700,20 @@ WMS_MODULES.picking = {
         </table>
       </div>
     </div>
-  </div>
 
-  <div class="card">
-    <div class="card-header"><span class="card-title"><i class="fa-solid fa-list-check"></i> Proceso por Planilla y Tiempos Operacionales</span></div>
-    <div class="table-container">
-      <table class="erp-table" id="dash-table">
-        <thead><tr>
-          <th>Planilla</th><th>Fecha Sep.</th><th>Clientes / Sucursal</th><th>Ruta</th><th class="text-center">Avance</th>
-          <th style="min-width:130px;">Progreso</th><th>Estado</th><th>Encargado(s)</th>
-          <th class="text-center">H. Inicio</th><th class="text-right">Obs</th>
-        </tr></thead>
-        <tbody>${tableRows || '<tr><td colspan="10" class="table-empty">Sin planillas en este rango</td></tr>'}</tbody>
-      </table>
+    <div class="card dash-tab-pane" id="dash-tab-planillas" style="${dashTab === 'dash-tab-planillas' ? '' : 'display:none;'}">
+      <div class="card-header"><span class="card-title"><i class="fa-solid fa-list-check"></i> Proceso por Planilla y Tiempos Operacionales</span>
+        <span style="font-size:11px;color:var(--muted);margin-left:8px;">Use <i class="fa-solid fa-chevron-right"></i> para expandir / contraer el detalle del pedido</span></div>
+      <div class="table-container">
+        <table class="erp-table" id="dash-table" style="width:100%;">
+          <thead><tr>
+            <th>Planilla</th><th class="text-center">Fecha / Pedidos</th><th class="text-center">Clientes / Sucursal</th><th class="text-center">Ruta</th><th class="text-center">Avance</th>
+            <th style="min-width:110px;">Progreso</th><th class="text-center">Estado</th><th class="text-center">Encargado(s)</th>
+            <th class="text-center">H. Inicio</th>
+          </tr></thead>
+          <tbody>${tableRows || '<tr><td colspan="9" class="table-empty">Sin planillas en este rango</td></tr>'}</tbody>
+        </table>
+      </div>
     </div>
   </div>
 </div>`);
@@ -7733,6 +7728,12 @@ WMS_MODULES.picking = {
       console.error(e);
       WMS.setContent('<div class="m-empty"><i class="fa-solid fa-triangle-exclamation"></i><p>Error cargando dashboard</p></div>');
     }
+  },
+
+  _switchDashTab(id, btn) {
+    this._dashTab = id;
+    document.querySelectorAll('.dash-tab-pane').forEach(p => p.style.display = p.id === id ? '' : 'none');
+    document.querySelectorAll('.dash-tab-btn').forEach(b => b.classList.toggle('active', b === btn));
   },
 
   _startTimers() {
