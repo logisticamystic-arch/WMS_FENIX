@@ -6214,22 +6214,24 @@ WMS_MODULES.picking = {
             <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
               <div>
                 <label class="form-label" style="display:block;margin-bottom:3px;">📅 DESDE</label>
-                <input type="date" id="agot-ini" class="form-control form-control-sm" style="width:130px;" value="${f.ini}">
+                <input type="date" id="agot-ini" class="form-control form-control-sm" style="width:130px;" value="${f.ini}" onchange="WMS_MODULES.picking._applyAgotFilters()">
               </div>
               <div>
                 <label class="form-label" style="display:block;margin-bottom:3px;">📅 HASTA</label>
-                <input type="date" id="agot-fin" class="form-control form-control-sm" style="width:130px;" value="${f.fin}">
+                <input type="date" id="agot-fin" class="form-control form-control-sm" style="width:130px;" value="${f.fin}" onchange="WMS_MODULES.picking._applyAgotFilters()">
               </div>
               <div style="min-width:190px;">
                 <label class="form-label" style="display:block;margin-bottom:3px;">🏢 SUCURSAL / CLIENTE</label>
-                <select id="agot-suc" class="form-control form-control-sm">${sucOptions}</select>
+                <select id="agot-suc" class="form-control form-control-sm" onchange="WMS_MODULES.picking._applyAgotFilters()">${sucOptions}</select>
               </div>
               <div style="flex:1;min-width:200px;">
                 <label class="form-label" style="display:block;margin-bottom:3px;">📦 REFERENCIA O PRODUCTO</label>
-                <input id="agot-ref" class="form-control form-control-sm" placeholder="Buscar por código o nombre..." value="${WMS.esc(f.referencia||'')}">
+                <input id="agot-ref" class="form-control form-control-sm" placeholder="Buscar por código o nombre..." value="${WMS.esc(f.referencia||'')}" autocomplete="off"
+                       oninput="clearTimeout(WMS_MODULES.picking._agotRefT); WMS_MODULES.picking._agotRefT = setTimeout(() => { const v = this.value.trim(); if (v.length === 0 || v.length >= 2) { WMS_MODULES.picking._agotRefFoco = true; WMS_MODULES.picking._applyAgotFilters(); } }, 600)"
+                       onkeydown="if(event.key==='Enter'){event.preventDefault();clearTimeout(WMS_MODULES.picking._agotRefT);WMS_MODULES.picking._applyAgotFilters();}">
               </div>
               <div style="display:flex;align-items:center;gap:6px;padding-bottom:5px;" title="Por defecto se excluyen los registros donde el auxiliar SÍ separó el 100% físico y solo faltó conciliar el inventario en el sistema — esos no son agotados reales para el cliente.">
-                <input type="checkbox" id="agot-incluir-conciliacion" ${f.incluirConciliacion ? 'checked' : ''} style="width:16px;height:16px;cursor:pointer;">
+                <input type="checkbox" id="agot-incluir-conciliacion" ${f.incluirConciliacion ? 'checked' : ''} style="width:16px;height:16px;cursor:pointer;" onchange="WMS_MODULES.picking._applyAgotFilters()">
                 <label for="agot-incluir-conciliacion" style="font-size:10px;font-weight:700;color:var(--muted);cursor:pointer;margin:0;">Incluir conciliación<br>de inventario</label>
               </div>
               <button class="btn btn-primary btn-sm" style="height:31px;padding:0 16px;font-weight:700;" onclick="WMS_MODULES.picking._applyAgotFilters()">
@@ -6276,6 +6278,11 @@ WMS_MODULES.picking = {
 
           <!-- SECTOR DE PESTAÑAS NAVEGABLES DEL DASHBOARD -->
           <div class="card" style="overflow:hidden;">
+            <div style="padding:8px 14px;font-size:11.5px;color:var(--text2);background:var(--info-bg);border-bottom:1px solid var(--border);">
+              <i class="fa-solid fa-filter" style="color:var(--accent);"></i> Todas las secciones muestran:
+              <b>${WMS.formatDate(f.ini)} – ${WMS.formatDate(f.fin)}</b>${f.sucursal ? ` · <b>${WMS.esc(f.sucursal)}</b>` : ' · todas las sucursales'}${f.referencia ? ` · referencia "<b>${WMS.esc(f.referencia)}</b>"` : ''}${f.incluirConciliacion ? ' · incluye conciliación' : ''}
+              · ${totalRegistros} registro(s)
+            </div>
             <div style="background:var(--table-header-bg);border-bottom:1px solid var(--border);padding:0 12px;display:flex;gap:4px;overflow-x:auto;">
               <button class="agot-tab-btn" onclick="WMS_MODULES.picking._switchAgotTab('tab-dia', this); WMS_MODULES.picking._agotCargarDia()">
                 <i class="fa-solid fa-sun" style="color:var(--warn);"></i> Agotados del Día
@@ -6612,6 +6619,18 @@ WMS_MODULES.picking = {
           </div>
 
         </div>`);
+      // Si se filtró escribiendo la referencia, devolver el cursor al campo
+      if (this._agotRefFoco) {
+        this._agotRefFoco = false;
+        const inp = document.getElementById('agot-ref');
+        if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+      }
+      // Al volver a filtrar, quedarse en la pestaña donde estaba el usuario
+      const tabPrev = this._agotTabActiva;
+      if (tabPrev && tabPrev !== 'tab-graficos') {
+        const btn = [...document.querySelectorAll('.agot-tab-btn')].find(b => (b.getAttribute('onclick') || '').includes(`'${tabPrev}'`));
+        if (btn) btn.click();
+      }
     } catch(e) {
       if (e.isSessionExpired) return;
       console.error(e);
@@ -6638,7 +6657,7 @@ WMS_MODULES.picking = {
     const f = this._agotFilters || {};
     cont.innerHTML = '<div class="spinner sm" style="margin:20px auto;display:block;"></div>';
     try {
-      const qs = `fecha_inicio=${fecha}&fecha_fin=${fecha}&sucursal_entrega=${encodeURIComponent(f.sucursal || '')}&incluir_conciliacion=${f.incluirConciliacion ? '1' : '0'}`;
+      const qs = `fecha_inicio=${fecha}&fecha_fin=${fecha}&sucursal_entrega=${encodeURIComponent(f.sucursal || '')}&referencia=${encodeURIComponent(f.referencia || '')}&incluir_conciliacion=${f.incluirConciliacion ? '1' : '0'}`;
       const [rA, rO] = await Promise.all([API.get('/picking/agotados', qs), API.get('/picking/agotados/observaciones', 'fecha=' + fecha)]);
       const rows = (rA.data && rA.data.rows) || [];
       const obs = rO.data || {};
@@ -6708,6 +6727,7 @@ WMS_MODULES.picking = {
   },
 
   _switchAgotTab(tabId, btnEl) {
+    this._agotTabActiva = tabId;
     document.querySelectorAll('.agot-tab-pane').forEach(p => p.style.display = 'none');
     document.querySelectorAll('.agot-tab-btn').forEach(b => b.classList.remove('active'));
     const pane = document.getElementById(tabId);
