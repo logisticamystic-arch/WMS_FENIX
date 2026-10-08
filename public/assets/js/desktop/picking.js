@@ -7652,15 +7652,15 @@ WMS_MODULES.picking = {
 
   ${this._renderAmbienteDashboardHtml(d)}
 
-  <div style="display:grid;grid-template-columns:1fr 2fr;gap:20px;margin:20px 0;">
-    <!-- Alertas de Faltantes -->
+  <div style="display:grid;grid-template-columns:1fr;gap:20px;margin:20px 0;">
+    <!-- Alertas de Faltantes (ancho completo y más alto: antes 1/3 de ancho x 300px obligaba a mucho scroll) -->
     <div class="card" style="border:1px solid var(--danger-bg);">
       <div class="card-header" style="background:var(--danger-bg);border-bottom:1px solid var(--danger-bg);"><span class="card-title text-danger"><i class="fa-solid fa-triangle-exclamation"></i> Alerta de Faltantes Críticos</span></div>
-      <div class="table-container" style="max-height:300px;">
-        <table class="erp-table" style="font-size:11px;">
-          <thead style="background:var(--surface);"><tr><th>Producto</th><th class="text-center">Solic.</th><th class="text-center">Sep.</th><th class="text-center">Pend.</th><th class="text-center">H.Ini</th><th class="text-center">Sucursal</th></tr></thead>
+      <div class="table-container" style="max-height:70vh;overflow-y:auto;">
+        <table class="erp-table" style="font-size:11px;width:100%;">
+          <thead style="background:var(--surface);position:sticky;top:0;z-index:1;"><tr><th>Producto</th><th class="text-center">Solic.</th><th class="text-center">Sep.</th><th class="text-center">Pend.</th><th class="text-center">H.Ini</th><th class="text-center">Sucursal</th></tr></thead>
           <tbody>${(d.alertas_faltantes||[]).length ? d.alertas_faltantes.map(f => `<tr>
-            <td><b style="color:var(--text)">${WMS.esc(f.producto)}</b><br><span style="color:var(--text-muted)">${WMS.esc(f.ean)}</span></td>
+            <td><b style="color:var(--text)">${WMS.esc(f.producto)}</b> <span style="color:var(--text-muted)">${WMS.esc(f.ean)}</span></td>
             <td class="text-center">${f.solic}</td>
             <td class="text-center">${f.disp}</td>
             <td class="text-center"><span class="badge badge-danger">${f.dif}</span></td>
