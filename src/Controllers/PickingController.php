@@ -10417,20 +10417,25 @@ class PickingController extends BaseController
      * y referencia/producto. Soporta exportación CSV con ?export=csv.
      */
     // ── Justificación de agotados por referencia y día (2026-10-08) ─────────
-    // GET  /picking/agotados/observaciones?fecha=YYYY-MM-DD → {producto_id: {observacion, usuario, updated_at}}
+    // GET  /picking/agotados/observaciones?fecha=YYYY-MM-DD  (o fecha_inicio/fecha_fin)
+    //      → {"producto_id|fecha": {producto_id, fecha, observacion, usuario, updated_at}}
     // PUT  /picking/agotados/observaciones {producto_id, fecha, observacion}  (vacía = se borra)
     public function getAgotadosObservaciones(Request $r, Response $res): Response
     {
-        $user  = $r->getAttribute('user');
-        $fecha = $r->getQueryParams()['fecha'] ?? date('Y-m-d');
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) return $this->error($res, 'Fecha inválida', 422);
+        $user = $r->getAttribute('user');
+        $q    = $r->getQueryParams();
+        $ini  = $q['fecha_inicio'] ?? ($q['fecha'] ?? date('Y-m-d'));
+        $fin  = $q['fecha_fin']    ?? ($q['fecha'] ?? $ini);
+        foreach ([$ini, $fin] as $f) {
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $f)) return $this->error($res, 'Fecha inválida', 422);
+        }
         $rows = Capsule::table('agotados_observaciones as ao')
             ->leftJoin('personal as pe', 'pe.id', '=', 'ao.usuario_id')
             ->where('ao.empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('ao.sucursal_id', $this->getEffectiveSucursalId($user, $r))
-            ->where('ao.fecha', $fecha)
-            ->get(['ao.producto_id', 'ao.observacion', 'pe.nombre as usuario', 'ao.updated_at']);
-        return $this->ok($res, $rows->keyBy('producto_id'));
+            ->whereBetween('ao.fecha', [$ini, $fin])
+            ->get(['ao.producto_id', Capsule::raw("to_char(ao.fecha, 'YYYY-MM-DD') as fecha"), 'ao.observacion', 'pe.nombre as usuario', 'ao.updated_at']);
+        return $this->ok($res, $rows->keyBy(fn($o) => $o->producto_id . '|' . $o->fecha));
     }
 
     public function guardarAgotadoObservacion(Request $r, Response $res): Response
@@ -10613,6 +10618,26 @@ class PickingController extends BaseController
         }
 
         $rows = $query->limit(1000)->get();
+
+        // Cantidad sospechosa (2026-10-08): pedidos digitados en UNIDADES/gramos en vez de
+        // cajas (ACEITE OLIVA X GR: 9.200 "cajas" de 4.600 g) inflaban el total de unidades
+        // faltantes a 312 millones. Se marca la fila cuando lo solicitado es >= 100 cajas y
+        // más de 50 veces la mediana de lo que se pide de esa referencia (120 días). No se
+        // borra nada: la vista la muestra aparte y la excluye de los totales.
+        $prodIds = $rows->pluck('producto_id')->unique()->values()->all();
+        $medianas = $prodIds ? Capsule::table('picking_detalles')
+            ->whereIn('producto_id', $prodIds)
+            ->where('created_at', '>=', date('Y-m-d', strtotime('-120 days')))
+            ->where('cantidad_solicitada', '>', 0)
+            ->groupBy('producto_id')
+            ->selectRaw('producto_id, percentile_cont(0.5) within group (order by cantidad_solicitada) as mediana')
+            ->pluck('mediana', 'producto_id') : collect();
+        foreach ($rows as $row) {
+            $med = (float)($medianas[$row->producto_id] ?? 0);
+            $sol = (float)$row->cantidad_solicitada;
+            $row->cantidad_sospechosa = $sol >= 100 && $sol > 50 * $med;
+            $row->mediana_solicitada  = $med;
+        }
 
         // BUG CORREGIDO 2026-08-20 (a pedido explícito): antes se listaba una fila por
         // cada picking_detalle individual — cuando un mismo pedido+referencia queda

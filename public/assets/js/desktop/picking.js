@@ -5992,6 +5992,13 @@ WMS_MODULES.picking = {
       const sucs = Array.isArray(d.sucursales) ? d.sucursales : [];
       const excedentes = Array.isArray(d.excedentes) ? d.excedentes : [];
 
+      // Cantidad sospechosa (marcada por el servidor: pedido digitado en unidades/gramos
+      // en vez de cajas). Sigue contando como registro, pero NO suma cantidades.
+      const sospechosas = rows.filter(r => r.cantidad_sospechosa);
+      sospechosas.forEach(r => {
+        r.sol_original = r.cantidad_solicitada; r.falt_original = r.cantidad_faltante;
+        r.cantidad_solicitada = 0; r.cantidad_faltante = 0;
+      });
       this._agotDataCache = rows;
       this._excedentesDataCache = excedentes;
 
@@ -6034,8 +6041,10 @@ WMS_MODULES.picking = {
             unidades_faltantes: 0,
             clientes: new Set(),
             causas: {},
+            dias: new Set(),
           };
         }
+        if (r.fecha) porReferencia[key].dias.add(String(r.fecha).slice(0, 10));
         const upc = porReferencia[key].unidades_caja;
         const cjSol = parseFloat(r.cantidad_solicitada) || 0;
         const cjFalt = parseFloat(r.cantidad_faltante) || 0;
@@ -6051,8 +6060,10 @@ WMS_MODULES.picking = {
       const refArray = Object.values(porReferencia).sort((a,b) => b.cajas_faltantes - a.cajas_faltantes);
       // Justificación por referencia (2026-10-08): una por referencia y DÍA; en el
       // consolidado se digita la del día "hasta" del filtro.
-      let obsFin = {};
-      try { obsFin = (await API.get('/picking/agotados/observaciones', 'fecha=' + f.fin)).data || {}; } catch (e) { obsFin = {}; }
+      // Justificación por referencia y POR DÍA (2026-10-08): {"producto_id|fecha": {...}}
+      let obsRango = {};
+      try { obsRango = (await API.get('/picking/agotados/observaciones', `fecha_inicio=${f.ini}&fecha_fin=${f.fin}`)).data || {}; } catch (e) { obsRango = {}; }
+      this._agotObs = obsRango;
 
       // ── MATRIZ DE CLIENTES Y SUS AGOTADOS ──
       const porCliente = {};
@@ -6073,7 +6084,8 @@ WMS_MODULES.picking = {
         porCliente[cliKey].unidades_faltantes += (cjFalt * upc);
 
         const causaUpper = (r.causa || '').toUpperCase();
-        const esErrorDigitacion = causaUpper.includes('DIGITACI') || causaUpper.includes('DIGITACION') || causaUpper.includes('PEDIDO');
+        // 'PEDIDO' a secas también atrapaba "UBICACIÓN AGOTADA POR OTRO PEDIDO" (operativo)
+        const esErrorDigitacion = causaUpper.includes('DIGITACI');
         if (esErrorDigitacion) porCliente[cliKey].errores_digitacion_cnt++;
 
         porCliente[cliKey].referencias.push({
@@ -6095,7 +6107,7 @@ WMS_MODULES.picking = {
       rows.forEach(r => {
         const causaUpper = (r.causa || 'SIN MOTIVO DEFINIDO').toUpperCase();
         let responsable = 'OPERACIONES Y BODEGA';
-        if (causaUpper.includes('DIGITACI') || causaUpper.includes('COMERCIAL') || causaUpper.includes('PEDIDO')) {
+        if (causaUpper.includes('DIGITACI') || causaUpper.includes('COMERCIAL')) {
           responsable = 'COMERCIAL / DIGITACIÓN';
         } else if (causaUpper.includes('PROVEEDOR') || causaUpper.includes('RECEPCION') || causaUpper.includes('COMPRAS')) {
           responsable = 'PROVEEDORES / COMPRAS';
@@ -6276,6 +6288,24 @@ WMS_MODULES.picking = {
             </div>
           </div>
 
+          ${sospechosas.length ? `
+          <details style="background:var(--warn-bg);border:1px solid var(--warn);border-radius:10px;padding:10px 14px;">
+            <summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--warn);">
+              <i class="fa-solid fa-triangle-exclamation"></i> ${sospechosas.length} registro(s) con cantidad sospechosa excluidos de los totales
+              (posible pedido digitado en unidades/gramos en vez de cajas)
+            </summary>
+            <table class="erp-table" style="font-size:11px;margin-top:8px;background:var(--surface);">
+              <thead><tr><th>Fecha</th><th>Pedido</th><th>Cliente</th><th>Referencia</th><th style="text-align:center;">Solicitado (cj)</th><th style="text-align:center;">Faltante (cj)</th><th style="text-align:center;">Lo usual (mediana)</th><th>Causa</th></tr></thead>
+              <tbody>${sospechosas.map(x => `<tr>
+                <td>${WMS.formatDate(x.fecha)}</td><td>${WMS.esc(this._agotPedido(x))}</td><td>${WMS.esc(x.cliente || x.sucursal_entrega || '-')}</td>
+                <td><b>${WMS.esc(x.producto_codigo || '')}</b> ${WMS.esc(x.producto_nombre || '')}</td>
+                <td style="text-align:center;color:var(--danger);font-weight:700;">${WMS.formatNum(x.sol_original)}</td>
+                <td style="text-align:center;">${WMS.formatNum(x.falt_original)}</td>
+                <td style="text-align:center;">${WMS.formatNum(x.mediana_solicitada)} cj</td>
+                <td>${WMS.esc(x.causa || '-')}</td></tr>`).join('')}</tbody>
+            </table>
+          </details>` : ''}
+
           <!-- SECTOR DE PESTAÑAS NAVEGABLES DEL DASHBOARD -->
           <div class="card" style="overflow:hidden;">
             <div style="padding:8px 14px;font-size:11.5px;color:var(--text2);background:var(--info-bg);border-bottom:1px solid var(--border);">
@@ -6373,10 +6403,10 @@ WMS_MODULES.picking = {
             <div id="tab-dia" class="agot-tab-pane" style="display:none;padding:16px;">
               <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
                 <label class="form-label" style="margin:0;">Día</label>
-                <input type="date" id="agot-dia-fecha" class="form-control form-control-sm" style="width:160px;" value="${WMS.getToday()}" onchange="WMS_MODULES.picking._agotCargarDia()">
+                <input type="date" id="agot-dia-fecha" class="form-control form-control-sm" style="width:160px;" value="${f.fin}" onchange="WMS_MODULES.picking._agotCargarDia()">
                 <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.picking._agotCopiarDia()"><i class="fa-solid fa-copy"></i> Copiar texto</button>
                 <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.picking._agotImprimirDia()"><i class="fa-solid fa-print"></i> Imprimir</button>
-                <span style="font-size:11px;color:var(--muted);">Las observaciones se digitan en "Consolidado por Referencias" (filtro hasta = ese día).</span>
+                <span style="font-size:11px;color:var(--muted);">Escriba la justificación de cada referencia: se guarda para ESE día (otro día puede tener otra).</span>
               </div>
               <div id="agot-dia-body"><div class="spinner sm" style="margin:20px auto;display:block;"></div></div>
             </div>
@@ -6395,7 +6425,7 @@ WMS_MODULES.picking = {
                       <th style="text-align:center;">Faltante (UND/T)</th>
                       <th style="text-align:center;">Clientes Afectados</th>
                       <th>Causa Principal</th>
-                      <th style="min-width:260px;">Observación / justificación (${WMS.formatDate(f.fin)})</th>
+                      <th style="min-width:300px;">Observación / justificación por día</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -6415,11 +6445,7 @@ WMS_MODULES.picking = {
                           </span>
                         </td>
                         <td style="font-size:10.5px;color:var(--muted);">${WMS.esc(causaTop)}</td>
-                        <td>
-                          ${r.producto_id ? `<textarea class="form-control form-control-sm agot-obs" rows="1" maxlength="1000" data-prod="${r.producto_id}" data-fecha="${f.fin}"
-                            placeholder="Escriba la justificación…" style="min-width:240px;resize:vertical;font-size:11px;"
-                            onchange="WMS_MODULES.picking._agotGuardarObs(this)">${WMS.esc(obsFin[r.producto_id]?.observacion || '')}</textarea>
-                          <div class="agot-obs-meta" style="font-size:9.5px;color:var(--muted);margin-top:2px;">${obsFin[r.producto_id] ? `${WMS.esc(obsFin[r.producto_id].usuario || '')} · ${WMS.formatDateTime(obsFin[r.producto_id].updated_at)}` : ''}</div>` : '—'}
+                        <td>${r.producto_id ? [...r.dias].sort().reverse().map(dia => this._agotObsCampo(r.producto_id, dia, obsRango[r.producto_id + '|' + dia], true)).join('') : '—'}
                         </td>
                       </tr>`;
                     }).join('') || '<tr><td colspan="9" class="table-empty">Sin referencias en consolidado</td></tr>'}
@@ -6596,6 +6622,16 @@ WMS_MODULES.picking = {
 
             <!-- CONTENIDO PESTAÑA 6: MOTIVOS Y RESPONSABLES -->
             <div id="tab-motivos" class="agot-tab-pane" style="display:none;padding:16px;">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(420px, 1fr));gap:14px;margin-bottom:16px;">
+                <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;">
+                  <div style="font-weight:700;font-size:12.5px;margin-bottom:8px;"><i class="fa-solid fa-chart-line" style="color:var(--accent);"></i> Agotados por motivo y día (cantidad de casos)</div>
+                  <div style="height:280px;"><canvas id="agot-mot-cant"></canvas></div>
+                </div>
+                <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;">
+                  <div style="font-weight:700;font-size:12.5px;margin-bottom:8px;"><i class="fa-solid fa-percent" style="color:var(--accent);"></i> Participación de cada motivo por día (%)</div>
+                  <div style="height:280px;"><canvas id="agot-mot-pct"></canvas></div>
+                </div>
+              </div>
               <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));gap:14px;">
                 ${motivosArray.map(m => {
                   const isComercial = m.responsable.includes('COMERCIAL');
@@ -6642,7 +6678,11 @@ WMS_MODULES.picking = {
   async _agotGuardarObs(el) {
     const meta = el.parentElement.querySelector('.agot-obs-meta');
     try {
-      await API.put('/picking/agotados/observaciones', { producto_id: +el.dataset.prod, fecha: el.dataset.fecha, observacion: el.value.trim() });
+      const r = await API.put('/picking/agotados/observaciones', { producto_id: +el.dataset.prod, fecha: el.dataset.fecha, observacion: el.value.trim() });
+      const llave = el.dataset.prod + '|' + el.dataset.fecha;
+      [this._agotObs, this._agotDia?.obs].forEach(c => { if (!c) return; if (el.value.trim()) c[llave] = r.data; else delete c[llave]; });
+      // el mismo campo puede estar en las dos pestañas (consolidado y día): sincronizarlo
+      document.querySelectorAll(`textarea.agot-obs[data-prod="${el.dataset.prod}"][data-fecha="${el.dataset.fecha}"]`).forEach(t => { if (t !== el) t.value = el.value; });
       if (meta) meta.innerHTML = el.value.trim() ? `<span style="color:var(--ok);"><i class="fa-solid fa-check"></i> Guardada</span>` : 'Sin observación';
     } catch (e) {
       WMS.toast('error', e.message || 'No se pudo guardar la observación');
@@ -6658,14 +6698,15 @@ WMS_MODULES.picking = {
     cont.innerHTML = '<div class="spinner sm" style="margin:20px auto;display:block;"></div>';
     try {
       const qs = `fecha_inicio=${fecha}&fecha_fin=${fecha}&sucursal_entrega=${encodeURIComponent(f.sucursal || '')}&referencia=${encodeURIComponent(f.referencia || '')}&incluir_conciliacion=${f.incluirConciliacion ? '1' : '0'}`;
-      const [rA, rO] = await Promise.all([API.get('/picking/agotados', qs), API.get('/picking/agotados/observaciones', 'fecha=' + fecha)]);
+      const [rA, rO] = await Promise.all([API.get('/picking/agotados', qs), API.get('/picking/agotados/observaciones', `fecha_inicio=${fecha}&fecha_fin=${fecha}`)]);
       const rows = (rA.data && rA.data.rows) || [];
       const obs = rO.data || {};
       const por = {};
       rows.forEach(r => {
         const k = r.producto_id || r.producto_codigo;
         const upc = this._agotUpc(r);
-        por[k] = por[k] || { producto_id: r.producto_id, codigo: r.producto_codigo || '-', nombre: r.producto_nombre || '-', upc, sol: 0, pend: 0 };
+        por[k] = por[k] || { producto_id: r.producto_id, codigo: r.producto_codigo || '-', nombre: r.producto_nombre || '-', upc, sol: 0, pend: 0, sospechosa: false };
+        if (r.cantidad_sospechosa) { por[k].sospechosa = true; return; }   // no suma cantidades irreales
         por[k].sol  += (parseFloat(r.cantidad_solicitada) || 0);
         por[k].pend += (parseFloat(r.cantidad_faltante) || 0);
       });
@@ -6693,7 +6734,7 @@ WMS_MODULES.picking = {
                 <td style="font-weight:700;">${WMS.esc(x.nombre)}</td>
                 <td style="text-align:center;">${cant(x.sol, x.upc)}</td>
                 <td style="text-align:center;color:var(--danger);">${cant(x.pend, x.upc)}</td>
-                <td style="font-size:11.5px;">${obs[x.producto_id] ? WMS.esc(obs[x.producto_id].observacion) : '<span style="color:var(--muted);">Sin observación</span>'}</td>
+                <td>${this._agotObsCampo(x.producto_id, fecha, obs[x.producto_id + '|' + fecha], false)}${x.sospechosa ? '<div style="font-size:10px;color:var(--warn);"><i class="fa-solid fa-triangle-exclamation"></i> Tiene una línea con cantidad sospechosa (no sumada)</div>' : ''}</td>
               </tr>`).join('') || '<tr><td colspan="5" class="table-empty">No hubo agotados este día</td></tr>'}</tbody>
             </table>
           </div>
@@ -6709,25 +6750,82 @@ WMS_MODULES.picking = {
     if (!d) return;
     const fmt = (cj, upc) => `${WMS.formatNum(cj)} cj` + (upc > 1 ? ` (${WMS.formatNum(Math.round(cj * upc * 1000) / 1000)} und)` : '');
     const txt = [d.saludo + ' (' + WMS.formatDate(d.fecha) + '):', '']
-      .concat(d.lista.map(x => `• ${x.codigo} ${x.nombre} — solicitado ${fmt(x.sol, x.upc)}, pendiente ${fmt(x.pend, x.upc)}` + (d.obs[x.producto_id] ? ` — ${d.obs[x.producto_id].observacion}` : '')))
+      .concat(d.lista.map(x => { const o = this._agotObsTexto(x.producto_id, d.fecha); return `• ${x.codigo} ${x.nombre} — solicitado ${fmt(x.sol, x.upc)}, pendiente ${fmt(x.pend, x.upc)}` + (o ? ` — ${o}` : ''); }))
       .join('\n');
     try { await navigator.clipboard.writeText(txt); WMS.toast('success', 'Texto copiado'); }
     catch (e) { WMS.toast('warning', 'No se pudo copiar automáticamente'); }
   },
 
   _agotImprimirDia() {
-    const el = document.getElementById('agot-dia-imprimible');
-    if (!el) return;
+    const d = this._agotDia;
+    if (!d) return;
+    const fmt = (cj, upc) => `${WMS.formatNum(cj)} cj` + (upc > 1 ? ` (${WMS.formatNum(Math.round(cj * upc * 1000) / 1000)} und)` : '');
     const w = window.open('', '_blank');
     if (!w) return WMS.toast('warning', 'Permita ventanas emergentes para imprimir');
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Agotados del día</title>
-      <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse;font-size:12px}
-      th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}th{background:#f1f5f9}</style></head><body>${el.innerHTML}</body></html>`);
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Agotados del día ${WMS.formatDate(d.fecha)}</title>
+      <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}h2{margin:0 0 4px}p{color:#555;margin:0 0 14px}
+      table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;vertical-align:top}th{background:#f1f5f9}</style></head><body>
+      <h2>${WMS.esc(d.saludo)}</h2><p>${WMS.formatDate(d.fecha)} · ${d.lista.length} referencia(s)</p>
+      <table><thead><tr><th>Código</th><th>Referencia</th><th>Cant. solicitada</th><th>Cant. pendiente</th><th>Observaciones</th></tr></thead><tbody>
+      ${d.lista.map(x => `<tr><td>${WMS.esc(x.codigo)}</td><td>${WMS.esc(x.nombre)}</td><td>${fmt(x.sol, x.upc)}</td><td>${fmt(x.pend, x.upc)}</td><td>${WMS.esc(this._agotObsTexto(x.producto_id, d.fecha))}</td></tr>`).join('')}
+      </tbody></table></body></html>`);
     w.document.close(); w.focus(); w.print();
+  },
+
+  /** Campo de justificación de una referencia en un día (consolidado: con la fecha al lado). */
+  _agotObsCampo(prodId, fecha, o, conFecha) {
+    return `<div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:4px;">
+      ${conFecha ? `<span style="font-size:10px;font-weight:700;color:var(--muted);min-width:38px;padding-top:6px;">${WMS.formatDate(fecha).slice(0, 5)}</span>` : ''}
+      <div style="flex:1;">
+        <textarea class="form-control form-control-sm agot-obs" rows="1" maxlength="1000" data-prod="${prodId}" data-fecha="${fecha}"
+          placeholder="Justificación del ${WMS.formatDate(fecha)}…" style="min-width:220px;resize:vertical;font-size:11px;"
+          onchange="WMS_MODULES.picking._agotGuardarObs(this)">${WMS.esc(o?.observacion || '')}</textarea>
+        <div class="agot-obs-meta" style="font-size:9.5px;color:var(--muted);">${o ? `${WMS.esc(o.usuario || '')} · ${WMS.formatDateTime(o.updated_at)}` : ''}</div>
+      </div></div>`;
+  },
+
+  _agotObsTexto(prodId, fecha) {
+    const o = (this._agotObs || {})[prodId + '|' + fecha] || (this._agotDia?.obs || {})[prodId + '|' + fecha];
+    return o ? o.observacion : '';
+  },
+
+  /** Líneas por día de los motivos (top 6 + Otros): casos y % del día. Se dibuja al
+   *  abrir la pestaña (un canvas oculto mide 0 px). */
+  _agotRenderMotivos() {
+    const rows = this._agotDataCache || [];
+    (this._agotMotCharts || []).forEach(c => { try { c.destroy(); } catch (e) {} });
+    this._agotMotCharts = [];
+    const c1 = document.getElementById('agot-mot-cant'), c2 = document.getElementById('agot-mot-pct');
+    if (!c1 || !c2 || !rows.length) return;
+    const motivo = r => (r.causa || 'SIN MOTIVO DEFINIDO').toUpperCase();
+    const tot = {}; rows.forEach(r => { tot[motivo(r)] = (tot[motivo(r)] || 0) + 1; });
+    const top = Object.keys(tot).sort((a, b) => tot[b] - tot[a]).slice(0, 6);
+    const serie = m => top.includes(m) ? m : 'OTROS';
+    const dias = [...new Set(rows.map(r => String(r.fecha).slice(0, 10)))].sort();
+    const nombres = [...top, ...(Object.keys(tot).length > top.length ? ['OTROS'] : [])];
+    const cuenta = {}; dias.forEach(d => { cuenta[d] = {}; });
+    rows.forEach(r => { const d = String(r.fecha).slice(0, 10), m = serie(motivo(r)); cuenta[d][m] = (cuenta[d][m] || 0) + 1; });
+    const totDia = d => Object.values(cuenta[d]).reduce((a, b) => a + b, 0);
+    const pal = window.WMS_CHART_PALETTE || ['#2b5fc7', '#10b981', '#f97316', '#dc2626', '#7c3aed', '#0d9488', '#64748b'];
+    const ds = pct => nombres.map((m, i) => ({
+      label: m.length > 34 ? m.slice(0, 34) + '…' : m,
+      data: dias.map(d => pct ? Math.round((cuenta[d][m] || 0) / (totDia(d) || 1) * 1000) / 10 : (cuenta[d][m] || 0)),
+      borderColor: pal[i % pal.length], backgroundColor: pal[i % pal.length], tension: 0.25, cubicInterpolationMode: 'monotone', pointRadius: 3, borderWidth: 2,
+    }));
+    const labels = dias.map(d => WMS.formatDate(d).slice(0, 5));
+    const opts = pct => ({ responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+                 tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${pct ? c.parsed.y + '%' : c.parsed.y + ' caso(s)'}` } } },
+      scales: { y: { beginAtZero: true, ...(pct ? { max: 100, ticks: { callback: v => v + '%' } } : { ticks: { precision: 0 } }) } } });
+    this._agotMotCharts = [
+      new Chart(c1, { type: 'line', data: { labels, datasets: ds(false) }, options: opts(false) }),
+      new Chart(c2, { type: 'line', data: { labels, datasets: ds(true) }, options: opts(true) }),
+    ];
   },
 
   _switchAgotTab(tabId, btnEl) {
     this._agotTabActiva = tabId;
+    if (tabId === 'tab-motivos') setTimeout(() => this._agotRenderMotivos(), 0);
     document.querySelectorAll('.agot-tab-pane').forEach(p => p.style.display = 'none');
     document.querySelectorAll('.agot-tab-btn').forEach(b => b.classList.remove('active'));
     const pane = document.getElementById(tabId);
