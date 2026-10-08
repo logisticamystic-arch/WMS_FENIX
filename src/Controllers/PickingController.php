@@ -4343,43 +4343,16 @@ class PickingController extends BaseController
                     try {
                         if ($modo === 'confirmar') {
                             Capsule::transaction(function () use (
-                                $lineasNuevas, $ordenIdReuso, $cleanNumber, $ambienteDeUbicacion, $user, $r
+                                $lineasNuevas, $ordenIdReuso, $cleanNumber, $ambienteDeUbicacion
                             ) {
-                                $ordenReuso  = OrdenPicking::find($ordenIdReuso);
-                                // Si la orden ya está en curso (no 'Pendiente'), la línea nueva
-                                // nace 'EnProceso' — no debe quedar invisible para el auxiliar que
-                                // ya tiene el ambiente/pedido asignado (regla de negocio vigente:
-                                // nunca se marca Faltante automáticamente, ver _reservarStockLineaNueva).
-                                $enCurso     = $ordenReuso && $ordenReuso->estado !== 'Pendiente';
-                                // BUG CORREGIDO 2026-10-08 (Planillas 1951-1958, 65 líneas): en orden
-                                // en curso la línea nacía EnProceso SIN auxiliar ni reserva —
-                                // asignarPorAmbiente() solo toma Pendiente, así que nunca salía para
-                                // asignar ni le aparecía a nadie. Ahora hereda el auxiliar que ya
-                                // trabaja ese ambiente en la planilla (mismo criterio que agregarLinea)
-                                // y se reserva stock; si el ambiente no tiene auxiliar, queda
-                                // Pendiente para que sí salga en la asignación.
-                                $auxPorAmb = [];
-                                if ($enCurso) {
-                                    $auxPorAmb = Capsule::table('picking_detalles as pd')
-                                        ->join('orden_pickings as op', 'op.id', '=', 'pd.orden_picking_id')
-                                        ->where('op.empresa_id', $ordenReuso->empresa_id)
-                                        ->where(function ($q) use ($ordenReuso) {
-                                            if (!empty($ordenReuso->planilla_numero)) {
-                                                $q->where('op.planilla_numero', $ordenReuso->planilla_numero);
-                                            } else {
-                                                $q->where('pd.orden_picking_id', $ordenReuso->id);
-                                            }
-                                        })
-                                        ->whereNotNull('pd.auxiliar_id')
-                                        ->orderBy('pd.id')
-                                        ->pluck('pd.auxiliar_id', 'pd.ambiente')->toArray();
-                                }
-                                $idsReservar = [];
+                                // 2026-10-08 (a pedido explícito): toda referencia importada nace
+                                // Pendiente y SIN auxiliar, aunque el pedido ya esté en curso — el
+                                // supervisor decide a quién asignarla desde Asignar (listar incluye
+                                // pedidos en curso con líneas Pendiente sin auxiliar). La reserva de
+                                // stock la hace asignarPorAmbiente() al asignar. Antes nacía
+                                // EnProceso sin auxiliar y quedaba invisible (Planillas 1951-1958).
                                 foreach ($lineasNuevas as $item) {
-                                    $amb   = $ambienteDeUbicacion($item['fila']['ubicacion'] ?? '') ?: $this->_clasificarAmbiente($item['prod']);
-                                    $auxId = $auxPorAmb[$amb] ?? null;
-                                    $nl = PickingDetalle::create([
-                                        'auxiliar_id'         => $auxId,
+                                    PickingDetalle::create([
                                         'orden_picking_id'    => $ordenIdReuso,
                                         'producto_id'         => $item['prod']->id,
                                         'cantidad_solicitada' => $item['cantidad'],
@@ -4387,16 +4360,12 @@ class PickingController extends BaseController
                                         'devolucion_qty'      => 0,
                                         'costo_unitario'      => 0,
                                         'descuento_porc'      => 0,
-                                        'estado'              => ($enCurso && $auxId) ? 'EnProceso' : 'Pendiente',
-                                        'ambiente'            => $amb,
+                                        'estado'              => 'Pendiente',
+                                        'ambiente'            => $ambienteDeUbicacion($item['fila']['ubicacion'] ?? '') ?: $this->_clasificarAmbiente($item['prod']),
                                         'numero_pedido_ref'   => $item['nfRef'] ?: null,
                                         'unid_pedido_empaque' => $cleanNumber($item['fila']['unid_pedido_empaque'] ?? '0'),
                                         'unid_pedido_total'   => $cleanNumber($item['fila']['unid_pedido_total'] ?? '0'),
                                     ]);
-                                    if ($enCurso && $auxId) $idsReservar[] = $nl->id;
-                                }
-                                if ($idsReservar) {
-                                    $this->_reservarInventarioBatch([$ordenIdReuso], $user, $r, $idsReservar);
                                 }
                             });
                         }
