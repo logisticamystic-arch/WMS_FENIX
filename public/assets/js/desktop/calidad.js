@@ -86,8 +86,8 @@ WMS_MODULES.calidad = {
           </div>
 
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:16px;">
-            ${this._kpiCard('fa-truck-ramp-box', '#2b5fc7', 'Auditorías de Recepción', rc.total_registros ?? 0, `${rc.conformes ?? 0} conformes / ${rc.no_conformes ?? 0} inconformes`)}
-            ${this._kpiCard('fa-clipboard-check', rc.pct_conforme == null ? '#94a3b8' : (rc.pct_conforme >= 90 ? '#16a34a' : '#dc2626'), '% Conforme (auditado)', rc.pct_conforme == null ? '—' : `${rc.pct_conforme}%`, `${rc.sin_auditoria ?? 0} recepciones sin auditoría manual`)}
+            ${this._kpiCard('fa-truck-ramp-box', '#2b5fc7', 'Recepciones', rc.total_registros ?? 0, `${rc.conformes ?? 0} conformes / ${rc.no_conformes ?? 0} inconformes`)}
+            ${this._kpiCard('fa-clipboard-check', rc.pct_conforme == null ? '#94a3b8' : (rc.pct_conforme >= 90 ? '#16a34a' : '#dc2626'), '% Conforme (auditado)', rc.pct_conforme == null ? '—' : `${rc.pct_conforme}%`, `${rc.pendientes ?? 0} pendiente(s) de inspección · ${Math.max(0, (rc.sin_auditoria ?? 0) - (rc.pendientes ?? 0))} sin auditoría / CDP`)}
             ${this._kpiCard('fa-flask-vial', '#0891b2', 'Líneas de producto con NC', rc.lineas_con_nc ?? 0, `de ${rc.lineas_producto ?? 0} líneas evaluadas`)}
             ${this._kpiCard('fa-truck-field', '#7c3aed', 'Preoperacionales', po.total_registros ?? 0, `${po.con_nc ?? 0} con novedades / ${po.sin_nc ?? 0} sin novedades`)}
           </div>
@@ -270,6 +270,7 @@ WMS_MODULES.calidad = {
       const r = await API.get(`/calidad/recepcion/${id}`);
       const e = r.data.encabezado;
       const detalles = r.data.detalles || [];
+      const pendientes = r.data.pendientes || [];
 
       // 3 estados desde 2026-09-18 (antes solo C/NC): Cumple/No Cumple/No
       // Aplica, tanto en el checklist de transporte como el de producto.
@@ -280,8 +281,12 @@ WMS_MODULES.calidad = {
         const [bg, fg] = COLORS[v].split(',');
         return `<span class="badge" style="background:${bg};color:${fg};">${LABELS[v]}</span>`;
       };
-      const veredicto = e.conforme === 'Conforme' ? { txt: 'Conforme', bg: 'var(--ok-bg)', fg: 'var(--ok)' }
-        : e.conforme === 'Inconforme' ? { txt: 'Inconforme', bg: 'var(--danger-bg)', fg: 'var(--danger)' }
+      // Veredicto desde la inspección por referencia (obligatoria); la cabecera de
+      // transporte solo existe en recibos cerrados (2026-10-07).
+      const hayNc = e.conforme === 'Inconforme' || detalles.some(d => ['olor', 'color', 'textura', 'temperatura', 'empaque', 'rotulado'].some(k => d[k] === 'NC'));
+      const veredicto = hayNc ? { txt: 'Inconforme', bg: 'var(--danger-bg)', fg: 'var(--danger)' }
+        : pendientes.length ? { txt: `Pendiente: ${pendientes.length} referencia(s) sin inspección`, bg: 'var(--warn-bg)', fg: 'var(--warn)' }
+        : (detalles.length || e.conforme === 'Conforme') ? { txt: 'Conforme', bg: 'var(--ok-bg)', fg: 'var(--ok)' }
         : { txt: 'Sin auditoría', bg: 'var(--btn-neutral)', fg: 'var(--muted)' };
 
       const html = `
@@ -292,6 +297,9 @@ WMS_MODULES.calidad = {
           <div><b>Factura:</b> ${WMS.esc(e.factura || '-')}</div>
           <div><b>Veredicto general:</b> <span class="badge" style="background:${veredicto.bg};color:${veredicto.fg};">${veredicto.txt}</span></div>
         </div>
+        ${pendientes.length ? `<div style="background:var(--warn-bg);border:1px solid var(--warn);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:.82rem;">
+          <b><i class="fa-solid fa-microscope"></i> Referencias sin inspección de calidad:</b>
+          ${pendientes.map(p => WMS.esc((p.producto_codigo ? p.producto_codigo + ' · ' : '') + (p.producto_nombre || ''))).join(', ')}</div>` : ''}
         <table class="data-table compact" style="margin-bottom:12px;">
           <thead><tr><th>Temperatura</th><th>Limpieza</th><th>Concepto sanitario</th><th>Carnet manipulación</th></tr></thead>
           <tbody><tr>

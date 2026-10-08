@@ -1634,6 +1634,9 @@ WMS_MODULES.recepcion = {
                 </tr></thead>
                 <tbody>${items.map(rc => {
                   const lineas = rc.detalles?.length || rc.detalles_count || 0;
+                  // Desde 2026-10-07 cada captura entra sola al inventario al tener la
+                  // inspección de calidad de su referencia (sin "Confirmar").
+                  const ingresadas = rc.detalles_ingresadas_count ?? (rc.detalles || []).filter(d => d.aprobado_admin).length;
                   const estadoColor = rc.estado === 'Cerrada' ? 'var(--ok)' : rc.estado === 'Borrador' ? 'var(--warn)' : 'var(--accent2)';
                   const estadoBg   = rc.estado === 'Cerrada' ? 'var(--ok-bg)' : rc.estado === 'Borrador' ? 'var(--warn-bg)' : 'var(--info-bg)';
                   return `<tr>
@@ -1641,7 +1644,8 @@ WMS_MODULES.recepcion = {
                   <td>${WMS.esc(rc.auxiliar?.nombre || '-')}</td>
                   <td><span style="background:${estadoBg};color:${estadoColor};padding:2px 10px;border-radius:99px;font-size:.72rem;font-weight:700;">${rc.estado}</span></td>
                   <td>${WMS.formatDate(rc.fecha_movimiento)}</td>
-                  <td class="text-center"><strong>${lineas}</strong> línea${lineas !== 1 ? 's' : ''}</td>
+                  <td class="text-center"><strong>${lineas}</strong> línea${lineas !== 1 ? 's' : ''}
+                    ${lineas ? `<div style="font-size:.7rem;font-weight:700;color:${ingresadas === lineas ? 'var(--ok)' : 'var(--warn)'};">${ingresadas === lineas ? '✓ todas ingresadas' : `${ingresadas} de ${lineas} ingresadas · falta calidad`}</div>` : ''}</td>
                   <td style="white-space:nowrap;display:flex;gap:4px;align-items:center;">
                     ${rc.estado === 'Borrador' ? `
                       <button class="btn btn-xs btn-primary-soft" onclick="WMS_MODULES.recepcion.abrirConsolaSinODC('${rc.id}')">
@@ -1651,8 +1655,9 @@ WMS_MODULES.recepcion = {
                         <i class="fa-solid fa-eye"></i> Detalle
                       </button>
                       <button class="btn btn-xs" style="background:var(--ok-bg);color:var(--ok);border:none;border-radius:3px;padding:2px 8px;cursor:pointer;font-size:.72rem;"
-                        onclick="WMS_MODULES.recepcion._confirmarSinODC('${rc.id}','${WMS.esc(rc.numero_recepcion)}')">
-                        <i class="fa-solid fa-lock"></i> Confirmar
+                        onclick="WMS_MODULES.recepcion._confirmarSinODC('${rc.id}','${WMS.esc(rc.numero_recepcion)}')"
+                        title="Opcional: cierra el recibo y bloquea la edición. Las capturas ya ingresan solas al inventario al completar la calidad.">
+                        <i class="fa-solid fa-lock"></i> Cerrar recibo
                       </button>
                       <button class="btn btn-xs" style="background:var(--danger-bg);color:var(--danger);border:none;border-radius:3px;padding:2px 8px;cursor:pointer;font-size:.72rem;"
                         onclick="WMS_MODULES.recepcion._eliminarRecepcionSinODC('${rc.id}','${WMS.esc(rc.numero_recepcion)}')">
@@ -4380,7 +4385,7 @@ WMS_MODULES.recepcion = {
                       <i class="fa-solid fa-timeline"></i> Tracking & CRM
                     </button>
                     ${i.estado !== 'Despachado' ? `
-                      <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.recepcion._miscNuevo(${this.esc(JSON.stringify(i).replace(/"/g, '&quot;'))})" style="font-size:.75rem;" title="Editar">
+                      <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.recepcion._miscNuevo(${WMS.esc(JSON.stringify(i))})" style="font-size:.75rem;" title="Editar">
                         <i class="fa-solid fa-pen"></i>
                       </button>
                     ` : ''}

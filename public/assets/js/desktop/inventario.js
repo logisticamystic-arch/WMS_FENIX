@@ -226,9 +226,14 @@ WMS_MODULES.inventario = {
 
   // Detalle de ingresos y despachos del período (a pedido de Camilo, 2026-09-30).
   _htmlDetalleIngresosDespachos(movs, upc) {
-    const filas = movs.filter(m => ['ingreso', 'despacho'].includes(this._clasificarMov(m)));
+    // 2026-10-07: también ajustes y devoluciones (un ajuste manual de 30 cajas de
+    // CHORIZO ESPAÑOL salía en el gráfico pero no en esta tabla).
+    const filas = movs.filter(m => ['ingreso', 'despacho', 'ajuste', 'devolucion'].includes(this._clasificarMov(m)));
     const totIng = filas.filter(m => this._clasificarMov(m) === 'ingreso').reduce((s, m) => s + (+m.entradas || 0), 0);
     const totDes = filas.filter(m => this._clasificarMov(m) === 'despacho').reduce((s, m) => s + (+m.salidas || 0), 0);
+    const totAjMas   = filas.filter(m => this._clasificarMov(m) === 'ajuste').reduce((s, m) => s + (+m.entradas || 0), 0);
+    const totAjMenos = filas.filter(m => this._clasificarMov(m) === 'ajuste').reduce((s, m) => s + (+m.salidas || 0), 0);
+    const totDev = filas.filter(m => this._clasificarMov(m) === 'devolucion').reduce((s, m) => s + (+m.entradas || 0), 0);
     const doc = m => {
       if (m.referencia_tipo === 'OrdenPicking') return `${m.sucursal_pedido ? WMS.esc(m.sucursal_pedido) + ' · ' : ''}Pedido #${m.referencia_id}`;
       return WMS.esc(m.observaciones || m.referencia_tipo || '—');
@@ -236,10 +241,12 @@ WMS_MODULES.inventario = {
     return `
       <div class="card">
         <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-          <span class="card-title"><i class="fa-solid fa-right-left" style="margin-right:6px;color:var(--accent)"></i>Detalle de Ingresos y Despachos</span>
+          <span class="card-title"><i class="fa-solid fa-right-left" style="margin-right:6px;color:var(--accent)"></i>Detalle de Ingresos, Despachos y Ajustes</span>
           <span style="font-size:.78rem;color:var(--muted);">
             <b style="color:var(--ok);">Ingresos: ${this._fmtCajasSaldos(totIng, upc)}</b> ·
             <b style="color:var(--danger);">Despachos: ${this._fmtCajasSaldos(totDes, upc)}</b>
+            ${totAjMas || totAjMenos ? ` · <b style="color:var(--info);">Ajustes: ${[totAjMas ? '+' + this._fmtCajasSaldos(totAjMas, upc) : '', totAjMenos ? '−' + this._fmtCajasSaldos(totAjMenos, upc) : ''].filter(Boolean).join(' / ')}</b>` : ''}
+            ${totDev ? ` · <b style="color:#6d28d9;">Devoluciones: ${this._fmtCajasSaldos(totDev, upc)}</b>` : ''}
           </span>
         </div>
         <div class="table-container" style="max-height:360px;overflow-y:auto;">
@@ -249,19 +256,22 @@ WMS_MODULES.inventario = {
               <th style="text-align:center">Cajas + saldos</th><th style="text-align:center">UND/TOTAL</th><th>Usuario</th>
             </tr></thead>
             <tbody>${filas.length ? filas.slice().reverse().map(m => {
-              const esIng = this._clasificarMov(m) === 'ingreso';
+              const cat = this._clasificarMov(m);
+              const esIng = (+m.entradas || 0) > 0;          // entra stock (ingreso, devolución, ajuste +)
               const und = esIng ? +m.entradas : +m.salidas;
+              const etq = { ingreso: ['ok', 'Ingreso'], despacho: ['warn', 'Despacho'], devolucion: ['info', 'Devolución'],
+                            ajuste: esIng ? ['ok', 'Ajuste +'] : ['alert', 'Ajuste −'] }[cat];
               return `<tr>
                 <td class="muted" style="white-space:nowrap;">${WMS.formatDate(m.fecha)} ${WMS.esc((m.hora || '').slice(0, 5))}</td>
-                <td><span class="pro-badge ${esIng ? 'ok' : 'warn'}">${esIng ? 'Ingreso' : 'Despacho'}</span></td>
+                <td><span class="pro-badge ${etq[0]}">${etq[1]}</span></td>
                 <td style="font-size:.78rem;">${doc(m)}</td>
-                <td><span class="pro-badge info">${WMS.esc((esIng ? m.ubicacion_destino : m.ubicacion_origen) || '—')}</span></td>
+                <td><span class="pro-badge info">${WMS.esc((esIng ? m.ubicacion_destino : m.ubicacion_origen) || m.ubicacion_destino || m.ubicacion_origen || '—')}</span></td>
                 <td class="muted">${WMS.esc(m.lote || '—')}</td>
                 <td style="text-align:center;font-weight:700;color:${esIng ? 'var(--ok)' : 'var(--danger)'};">${this._fmtCajasSaldos(und, upc)}</td>
                 <td style="text-align:center;">${WMS.formatNum(und)}</td>
                 <td class="muted">${WMS.esc(m.usuario || '—')}</td>
               </tr>`;
-            }).join('') : '<tr><td colspan="8" class="muted" style="text-align:center;padding:20px">Sin ingresos ni despachos en el período</td></tr>'}
+            }).join('') : '<tr><td colspan="8" class="muted" style="text-align:center;padding:20px">Sin ingresos, despachos ni ajustes en el período</td></tr>'}
             </tbody>
           </table>
         </div>

@@ -131,7 +131,9 @@ class RecepcionController extends BaseController
         }
         if (isset($params['odc_id'])) {
             if ($params['odc_id'] === 'null' || $params['odc_id'] === '') {
-                $query->whereNull('odc_id')->with('auxiliar');
+                // + cuántas capturas ya entraron al inventario (ver cargarInspeccionadasSinOdc)
+                $query->whereNull('odc_id')->with('auxiliar')
+                    ->withCount(['detalles as detalles_ingresadas_count' => fn($q) => $q->where('aprobado_admin', 1)]);
             } else {
                 $query->where('odc_id', $params['odc_id'])->with('detalles.producto');
             }
@@ -1008,11 +1010,14 @@ class RecepcionController extends BaseController
             }
         }
 
+        $cargadas = $esCdp ? 0 : $this->cargarInspeccionadasSinOdc($recepcion, (int)$user->id);
+        $detalle->refresh();
+
         return $this->json($response, [
             'error'   => false,
-            'message' => $esCdp
-                ? 'Captura sin ODC registrada correctamente'
-                : 'Línea registrada — quedará disponible en Patio al cerrar la recepción con la Auditoría de Calidad completa',
+            'message' => $esCdp || $detalle->aprobado_admin
+                ? 'Captura sin ODC registrada e ingresada al inventario (Patio)'
+                : 'Línea registrada — ingresará al inventario apenas se complete la inspección de calidad de la referencia',
             'data'    => [
                 'recepcion'  => $recepcion,
                 'detalle'    => $detalle,
@@ -1251,13 +1256,18 @@ class RecepcionController extends BaseController
                     'data' => ['recepcion_eliminada' => $restantes === 0]]);
             }
 
-            // Revertir inventario
-            $inv = \App\Models\Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
-                ->where('sucursal_id', $user->sucursal_id)
+            // Revertir inventario. Misma búsqueda que editarCaptura(): la carga guarda
+            // el lote tal cual (NULL si no tiene) y el estado según la mercancía; antes
+            // se buscaba lote 'N/A' + Disponible y no encontraba la fila (409 falso).
+            $estadoInv = ($detalle->estado_mercancia === 'BuenEstado' || empty($detalle->estado_mercancia)) ? 'Disponible' : 'Cuarentena';
+            $fvDet = $detalle->fecha_vencimiento ? substr((string)$detalle->fecha_vencimiento, 0, 10) : null;
+            $inv = \App\Models\Inventario::where('empresa_id', $recepcion->empresa_id)
+                ->where('sucursal_id', $recepcion->sucursal_id)
                 ->where('producto_id', $detalle->producto_id)
                 ->where('ubicacion_id', $detalle->ubicacion_destino_id)
-                ->where('lote', $loteKey)
-                ->where('estado', 'Disponible')
+                ->whereIn('estado', [$estadoInv, 'Disponible'])
+                ->where(fn($q) => $detalle->lote ? $q->where('lote', $detalle->lote) : $q->whereNull('lote')->orWhere('lote', 'N/A'))
+                ->orderByRaw('CASE WHEN fecha_vencimiento::date IS NOT DISTINCT FROM ?::date THEN 0 ELSE 1 END', [$fvDet])
                 ->lockForUpdate()
                 ->first();
 
@@ -1316,6 +1326,109 @@ class RecepcionController extends BaseController
             Capsule::connection()->rollBack();
             return $this->json($res, ['error'=>true,'message'=>'Error eliminando línea: ' . $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Carga UNA captura al inventario (kardex Entrada + fila de inventario en su
+     * ubicación de recibo) y la marca aprobado_admin=1. Es el mismo cuerpo que
+     * tenía el ciclo de confirm(); lo usan confirm() y la carga automática de
+     * Rec. sin ODC (cargarInspeccionadasSinOdc). Debe llamarse dentro de una
+     * transacción abierta.
+     */
+    private function cargarLineaAInventario(Recepcion $recepcion, RecepcionDetalle $linea, ?Ubicacion $patio, int $userId): void
+    {
+        // Log inmutable de movimiento
+        \App\Models\MovimientoInventario::create([
+            'empresa_id'      => $recepcion->empresa_id,
+            'sucursal_id'     => $recepcion->sucursal_id,
+            'producto_id'     => $linea->producto_id,
+            'tipo_movimiento' => 'Entrada',
+            'cantidad'        => $linea->cantidad_recibida,
+            'lote'            => $linea->lote,
+            'referencia_tipo' => 'recepciones',
+            'referencia_id'   => $recepcion->id,
+            'auxiliar_id'     => $userId,
+            'observaciones'   => 'Recepción ' . $recepcion->numero_recepcion,
+            'fecha_movimiento' => date('Y-m-d'),
+            // Bug preexistente destapado por este cambio: este bloque nunca se
+            // ejecutaba (aprobado_admin siempre era 1 al capturar), así que la
+            // falta de hora_inicio (NOT NULL) nunca daba error. Ahora sí corre.
+            'hora_inicio'     => date('H:i:s'),
+            'hora_fin'        => date('H:i:s'),
+        ]);
+
+        // ── PALLET AUTO-DISPONIBLE ───────────────────────────────────
+        $ubicacionInventario = $linea->ubicacion_destino_id ?: ($patio->id ?? null);
+        if ($ubicacionInventario) {
+            // fecha_vencimiento entra en la clave (sin numero_pallet aquí, a
+            // diferencia de las otras dos rutas de recepción) — es el diferenciador
+            // real entre partidas del mismo lote/producto/ubicación.
+            // Mercancía con novedad (estado_mercancia != BuenEstado) va a Cuarentena
+            // en vez de Disponible — antes entraba como stock normal disponible para
+            // picking sin ningún control de calidad.
+            $_invKeyConfirm = [
+                'empresa_id'   => $recepcion->empresa_id,
+                'sucursal_id'  => $recepcion->sucursal_id,
+                'producto_id'  => $linea->producto_id,
+                'ubicacion_id' => $ubicacionInventario,
+                'lote'         => $linea->lote,
+                'estado'       => ($linea->estado_mercancia === 'BuenEstado' || empty($linea->estado_mercancia)) ? 'Disponible' : 'Cuarentena',
+                // 2026-10-02: se conserva el pallet de la captura (como hacía la
+                // carga por captura antes del 29-sep) — sin él, "Ubicar" no podía
+                // mover el pallet completo y la mercancía quedaba sin agrupar.
+                'numero_pallet' => $linea->numero_pallet ?: null,
+            ];
+            if ($linea->fecha_vencimiento) {
+                $_invKeyConfirm['fecha_vencimiento'] = $linea->fecha_vencimiento;
+            }
+            $inv = \App\Models\Inventario::where($_invKeyConfirm)->lockForUpdate()->first();
+            if (!$inv) {
+                $inv = new \App\Models\Inventario($_invKeyConfirm);
+            }
+            $inv->cantidad           = ($inv->cantidad ?? 0) + $linea->cantidad_recibida;
+            $inv->cantidad_reservada = $inv->cantidad_reservada ?? 0;
+            $inv->fecha_vencimiento  = $linea->fecha_vencimiento ?? $inv->fecha_vencimiento;
+            // Recalcular descomposición UND/TOTAL
+            $_confirmUpc         = max(1, (int)($linea->cajas_por_unidad ?? 1));
+            $inv->cantidad_cajas = (int)floor((float)$inv->cantidad / $_confirmUpc);
+            $inv->saldos         = fmod((float)$inv->cantidad, (float)$_confirmUpc);
+            $inv->save();
+
+            $linea->aprobado_admin = 1;
+            $linea->save();
+        }
+    }
+
+    /**
+     * Rec. sin ODC (Camilo, 2026-10-07): lo que el auxiliar captura en el móvil
+     * queda INGRESADO sin que nadie tenga que "Confirmar" el recibo. Cada captura
+     * entra al inventario en cuanto su REFERENCIA tiene la inspección de calidad
+     * completa en esta recepción (la calidad sigue siendo obligatoria); si la
+     * inspección se hace después, entra al guardarla. El recibo sigue en
+     * Borrador, así que las capturas se pueden seguir editando (editarCaptura
+     * mueve el stock con kardex). Devuelve cuántas capturas se cargaron.
+     */
+    private function cargarInspeccionadasSinOdc(Recepcion $recepcion, int $userId): int
+    {
+        if ($recepcion->odc_id || $recepcion->estado !== 'Borrador') return 0;
+        $recepcion->load('detalles.producto');
+        $sinCalidad = array_column($this->referenciasSinCalidad($recepcion), 'producto_id');
+        $porCargar = $recepcion->detalles->filter(fn($l) => !$l->aprobado_admin && !in_array($l->producto_id, $sinCalidad));
+        if ($porCargar->isEmpty()) return 0;
+
+        $patio = Ubicacion::where('sucursal_id', $recepcion->sucursal_id)->where('tipo_ubicacion', 'Patio')->first();
+        Capsule::connection()->beginTransaction();
+        try {
+            foreach ($porCargar as $linea) $this->cargarLineaAInventario($recepcion, $linea, $patio, $userId);
+            Capsule::connection()->commit();
+        } catch (\Throwable $e) {
+            Capsule::connection()->rollBack();
+            error_log("cargarInspeccionadasSinOdc rec={$recepcion->id}: " . $e->getMessage());
+            return 0;
+        }
+        $guard = new InventoryGuard($recepcion->empresa_id, $recepcion->sucursal_id, $userId);
+        foreach ($porCargar->pluck('producto_id')->unique() as $pid) $guard->assertLedgerMatchesStock((int)$pid);
+        return $porCargar->count();
     }
 
     /**
@@ -1419,66 +1532,7 @@ class RecepcionController extends BaseController
                     }
                 }
 
-                // Log inmutable de movimiento
-                \App\Models\MovimientoInventario::create([
-                    'empresa_id'      => $recepcion->empresa_id,
-                    'sucursal_id'     => $recepcion->sucursal_id,
-                    'producto_id'     => $linea->producto_id,
-                    'tipo_movimiento' => 'Entrada',
-                    'cantidad'        => $linea->cantidad_recibida,
-                    'lote'            => $linea->lote,
-                    'referencia_tipo' => 'recepciones',
-                    'referencia_id'   => $recepcion->id,
-                    'auxiliar_id'     => $user->id,
-                    'observaciones'   => 'Recepción ' . $recepcion->numero_recepcion,
-                    'fecha_movimiento' => date('Y-m-d'),
-                    // Bug preexistente destapado por este cambio: este bloque nunca se
-                    // ejecutaba (aprobado_admin siempre era 1 al capturar), así que la
-                    // falta de hora_inicio (NOT NULL) nunca daba error. Ahora sí corre.
-                    'hora_inicio'     => date('H:i:s'),
-                    'hora_fin'        => date('H:i:s'),
-                ]);
-
-                // ── PALLET AUTO-DISPONIBLE ───────────────────────────────────
-                $ubicacionInventario = $linea->ubicacion_destino_id ?: ($patio->id ?? null);
-                if ($ubicacionInventario) {
-                    // fecha_vencimiento entra en la clave (sin numero_pallet aquí, a
-                    // diferencia de las otras dos rutas de recepción) — es el diferenciador
-                    // real entre partidas del mismo lote/producto/ubicación.
-                    // Mercancía con novedad (estado_mercancia != BuenEstado) va a Cuarentena
-                    // en vez de Disponible — antes entraba como stock normal disponible para
-                    // picking sin ningún control de calidad.
-                    $_invKeyConfirm = [
-                        'empresa_id'   => $recepcion->empresa_id,
-                        'sucursal_id'  => $recepcion->sucursal_id,
-                        'producto_id'  => $linea->producto_id,
-                        'ubicacion_id' => $ubicacionInventario,
-                        'lote'         => $linea->lote,
-                        'estado'       => ($linea->estado_mercancia === 'BuenEstado' || empty($linea->estado_mercancia)) ? 'Disponible' : 'Cuarentena',
-                        // 2026-10-02: se conserva el pallet de la captura (como hacía la
-                        // carga por captura antes del 29-sep) — sin él, "Ubicar" no podía
-                        // mover el pallet completo y la mercancía quedaba sin agrupar.
-                        'numero_pallet' => $linea->numero_pallet ?: null,
-                    ];
-                    if ($linea->fecha_vencimiento) {
-                        $_invKeyConfirm['fecha_vencimiento'] = $linea->fecha_vencimiento;
-                    }
-                    $inv = \App\Models\Inventario::where($_invKeyConfirm)->lockForUpdate()->first();
-                    if (!$inv) {
-                        $inv = new \App\Models\Inventario($_invKeyConfirm);
-                    }
-                    $inv->cantidad           = ($inv->cantidad ?? 0) + $linea->cantidad_recibida;
-                    $inv->cantidad_reservada = $inv->cantidad_reservada ?? 0;
-                    $inv->fecha_vencimiento  = $linea->fecha_vencimiento ?? $inv->fecha_vencimiento;
-                    // Recalcular descomposición UND/TOTAL
-                    $_confirmUpc         = max(1, (int)($linea->cajas_por_unidad ?? 1));
-                    $inv->cantidad_cajas = (int)floor((float)$inv->cantidad / $_confirmUpc);
-                    $inv->saldos         = fmod((float)$inv->cantidad, (float)$_confirmUpc);
-                    $inv->save();
-
-                    $linea->aprobado_admin = 1;
-                    $linea->save();
-                }
+                $this->cargarLineaAInventario($recepcion, $linea, $patio, $user->id);
 
                 $productosMovidos[$linea->producto_id] = true;
             }
@@ -2613,7 +2667,11 @@ public function getControlPanelData(Request $request, Response $response): Respo
 
         $calidad->save();
 
-        return $this->ok($response, $calidad, 'Inspección de calidad por producto guardada correctamente.');
+        $rec = $detalle->recepcion;
+        $cargadas = $rec ? $this->cargarInspeccionadasSinOdc($rec, (int)($request->getAttribute('user')->id ?? 0)) : 0;
+
+        return $this->ok($response, $calidad, 'Inspección de calidad por producto guardada correctamente.'
+            . ($cargadas ? " {$cargadas} captura(s) ingresada(s) al inventario." : ''));
     }
 
 }

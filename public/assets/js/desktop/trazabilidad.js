@@ -72,18 +72,23 @@ WMS_MODULES['trazabilidad'] = (function () {
     return `<span style="font-size:11px;color:var(--danger);"><i class="fa-solid fa-arrow-right" style="font-size:9px;margin-right:3px;"></i>${WMS.esc(origen || destino || '—')}</span>`;
   }
 
-  function renderMovTable(movimientos, showProducto) {
+  function renderMovTable(movimientos, showProducto, upcDefecto = 1) {
     if (!movimientos || !movimientos.length)
       return '<div class="m-empty"><i class="fa-solid fa-inbox"></i><p>Sin movimientos en el período seleccionado</p></div>';
 
     const prodTh = showProducto ? '<th style="min-width:160px;">Referencia</th>' : '';
     const rows = movimientos.map(m => {
-      const upc      = m.unidades_caja || 1;
-      const cj       = m.cantidad_cajas != null ? WMS.formatNum(m.cantidad_cajas) : null;
-      const und      = WMS.formatNum(m.cantidad || 0);
-      const cantHtml = cj != null
-        ? `<b>${cj} cj</b>${upc > 1 ? `<div style="font-size:10px;color:var(--muted);">${und} und</div>` : ''}`
-        : `<b>${und}</b>`;
+      // Cajas + saldos desde la CANTIDAD (2026-10-07): las columnas cantidad_cajas/
+      // saldos del kardex vienen en 0 en entradas, ajustes y parte del picking, y la
+      // tabla mostraba "0 cj" aunque el movimiento tuviera cantidad.
+      const upc      = (m.factor_udm != null || m.unidades_caja != null) ? _upc(m) : upcDefecto;
+      const cantU    = +m.cantidad || 0;
+      const und      = WMS.formatNum(cantU);
+      const cjN      = Math.floor(cantU / upc + 1e-9);
+      const slN      = Math.round((cantU - cjN * upc) * 1000) / 1000;
+      const cantHtml = upc > 1
+        ? `<b>${WMS.formatNum(cjN)} cj${slN ? ` + ${WMS.formatNum(slN)}` : ''}</b><div style="font-size:10px;color:var(--muted);">${und} und</div>`
+        : `<b>${und}</b> <span style="font-size:10px;color:var(--muted);">und</span>`;
 
       const prodTd = showProducto
         ? `<td><div style="font-weight:700;font-size:12px;">${WMS.esc(m.producto_nombre || '')}</div>
@@ -398,16 +403,14 @@ WMS_MODULES['trazabilidad'] = (function () {
       const mov = data.movimientos || [];
       const st  = data.stock_actual || [];
       const fi  = data.filtros     || {};
-      const upc = p.unidades_caja  || 1;
-
-      const totalEnt = mov.filter(m => ['Entrada','InvInicial','Reabastecimiento'].includes(m.tipo_movimiento))
-                          .reduce((s, m) => s + (m.cantidad_cajas != null ? +m.cantidad_cajas : +m.cantidad || 0), 0);
-      const totalSal = mov.filter(m => ['Salida','Picking','AjusteNegativo'].includes(m.tipo_movimiento))
-                          .reduce((s, m) => s + (m.cantidad_cajas != null ? +m.cantidad_cajas : +m.cantidad || 0), 0);
-      const totalDev = mov.filter(m => m.tipo_movimiento === 'Devolucion')
-                          .reduce((s, m) => s + (m.cantidad_cajas != null ? +m.cantidad_cajas : +m.cantidad || 0), 0);
-      const totalStk = st.reduce((s, x) => s + (+x.cantidad || 0), 0);
       const upcProd  = _upc(p);
+      const upc = upcProd;
+      // Totales en cajas desde la cantidad en unidades (ver renderMovTable)
+      const sumCj = tipos => mov.filter(m => tipos.includes(m.tipo_movimiento)).reduce((s, m) => s + (+m.cantidad || 0), 0) / upcProd;
+      const totalEnt = sumCj(['Entrada', 'InvInicial', 'Reabastecimiento']);
+      const totalSal = sumCj(['Salida', 'Picking', 'AjusteNegativo']);
+      const totalDev = sumCj(['Devolucion']);
+      const totalStk = st.reduce((s, x) => s + (+x.cantidad || 0), 0);
       const totCS    = _totalCajasSaldos([{ cantidad: totalStk }], () => upcProd);
 
       WMS.setContent(`<div style="padding:0 4px;">
@@ -442,7 +445,7 @@ WMS_MODULES['trazabilidad'] = (function () {
             Historial de Movimientos
             <span style="font-weight:400;color:var(--muted);font-size:12px;margin-left:6px;">(${mov.length} registros)</span>
           </span></div>
-          ${renderMovTable(mov, false)}
+          ${renderMovTable(mov, false, upcProd)}
         </div>
         ${renderStockActual(st, 'Stock Actual por Ubicación')}
       </div>`);

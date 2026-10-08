@@ -2257,7 +2257,8 @@ const MWMS = {
       s.fechaAutoRaw = '';
       s.origenCaptura = 'Manual';
       Swal.close();
-      this.toast('Captura registrada ✓ Listo para la siguiente referencia del pallet #' + palletNum, 'success');
+      // El servidor dice si ya quedó ingresada al inventario (calidad de la referencia completa)
+      this.toast((r.data?.detalle?.aprobado_admin ? 'Captura ingresada al inventario ✓' : 'Captura registrada ✓ (ingresa al completar la calidad)') + ' · pallet #' + palletNum, 'success');
       this._renderRecSinOdc();
 
       if (_calDetId && !_esCdpLinea) {

@@ -957,6 +957,17 @@
     let _wmsEmpresaFiltro = JSON.parse(localStorage.getItem('wms_empresa_filtro') || 'null');
     // Evita redirigir al login múltiples veces cuando varias llamadas reciben 401 simultáneamente
     let _sessionExpiredRedirecting = false;
+    // Error no capturado de un módulo (promesa rechazada sin catch): no dejar el
+    // spinner global bloqueando la pantalla ni la vista girando (2026-10-07).
+    window.addEventListener('unhandledrejection', ev => {
+      if (ev.reason && ev.reason.isSessionExpired) return;
+      console.error('[WMS] Error no controlado:', ev.reason);
+      if (window.WMS && document.getElementById('wms-global-spinner')) {
+        WMS.toast('error', (ev.reason && ev.reason.message) || 'Error inesperado');
+      } else if (window.WMS) {
+        WMS._liberarSpinnerContenido((ev.reason && ev.reason.message) || 'Error inesperado');
+      }
+    });
 
     function _jwtExp(token) {
       try { return JSON.parse(atob(token.split('.')[1])).exp || Infinity; }
@@ -2739,6 +2750,19 @@
       </div>`;
         container.appendChild(el);
         setTimeout(() => el.remove(), 4500);
+        if (type === 'error') this._liberarSpinnerContenido(msg);
+      },
+
+      // Red de seguridad (2026-10-07): si una pantalla falla y el contenido sigue
+      // siendo SOLO un spinner (la carga nunca pintó nada), se reemplaza por un
+      // aviso con "Reintentar" — antes quedaba girando para siempre.
+      _liberarSpinnerContenido(msg) {
+        const el = document.getElementById('main-content') || document.getElementById('content-body');
+        if (!el || !el.querySelector('.spinner') || el.textContent.trim().length > 40 || el.querySelector('table, form, canvas')) return;
+        const mod = this.currentModule, sub = this.currentSubModule;
+        el.innerHTML = `<div class="m-empty" style="padding:40px;"><i class="fa-solid fa-triangle-exclamation" style="color:var(--warn);"></i>
+          <p>${this.esc(String(msg || 'No se pudo cargar la información'))}</p>
+          <button class="btn btn-primary btn-sm" onclick="WMS.nav('${this.esc(mod)}'${sub ? `,'${this.esc(sub)}'` : ''})"><i class="fa-solid fa-rotate-right"></i> Reintentar</button></div>`;
       },
 
       // ── Utilidades ────────────────────────────────────────
@@ -2847,6 +2871,11 @@
 
       get user() { return _wmsUser; }
     };
+    // BUG CORREGIDO 2026-10-07: `const WMS` no queda en window, y apiCall /
+    // _handleSessionExpired preguntan por window.WMS — con sesión vencida (401) NUNCA
+    // se mostraba el login y la pantalla quedaba con el spinner girando; tampoco salían
+    // los avisos de "Reintentando conexión" ni de "Sin conexión".
+    window.WMS = WMS;
 
     // ── Login event listeners ──────────────────────────────
     document.querySelectorAll('.num-btn-d').forEach(b => {

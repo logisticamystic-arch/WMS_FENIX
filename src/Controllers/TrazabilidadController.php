@@ -68,11 +68,12 @@ class TrazabilidadController extends BaseController
             ->get();
 
         if (($params['export'] ?? '') === 'excel') {
-            $upc = max(1, (int)$producto->unidades_caja);
+            $upc = (float)($producto->factor_udm ?? 0) > 0 ? (float)$producto->factor_udm : max(1, (float)$producto->unidades_caja);
             $headers = ['Fecha', 'Tipo Movimiento', 'Cajas', 'Saldos', 'UND/TOTAL', 'Lote', 'F.Vencimiento', 'Ubic. Origen', 'Ubic. Destino', 'Responsable', 'Documento / Punto Despacho', 'Observaciones'];
             $rows = $movimientos->map(function ($m) use ($upc) {
-                $cajas  = $m->cantidad_cajas ?? intdiv((int)$m->cantidad, $upc);
-                $saldos = (int)$m->cantidad - ($cajas * $upc);
+                // Desde la cantidad: cantidad_cajas del kardex suele venir en 0
+                $cajas  = floor((float)$m->cantidad / $upc + 1e-9);
+                $saldos = round((float)$m->cantidad - $cajas * $upc, 3);
                 $docStr = '—';
                 if ($m->documento) {
                     if (($m->documento['tipo'] ?? '') === 'Picking') {
@@ -171,9 +172,10 @@ class TrazabilidadController extends BaseController
         if (($params['export'] ?? '') === 'excel') {
             $headers = ['Fecha', 'Producto', 'Código', 'Tipo Movimiento', 'Cajas', 'Saldos', 'UND/TOTAL', 'Lote', 'F.Vencimiento', 'Ubic. Origen', 'Ubic. Destino', 'Responsable', 'Documento / Punto Despacho'];
             $rows = $movimientos->map(function ($m) {
-                $upc    = max(1, (int)$m->unidades_caja);
-                $cajas  = $m->cantidad_cajas ?? intdiv((int)$m->cantidad, $upc);
-                $saldos = (int)$m->cantidad - ($cajas * $upc);
+                $upc    = (float)($m->factor_udm ?? 0) > 0 ? (float)$m->factor_udm : max(1, (float)$m->unidades_caja);
+                // Desde la cantidad: cantidad_cajas del kardex suele venir en 0
+                $cajas  = floor((float)$m->cantidad / $upc + 1e-9);
+                $saldos = round((float)$m->cantidad - $cajas * $upc, 3);
                 $docStr = '—';
                 if ($m->documento) {
                     if (($m->documento['tipo'] ?? '') === 'Picking') {
