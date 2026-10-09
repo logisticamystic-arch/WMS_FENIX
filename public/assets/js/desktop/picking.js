@@ -143,6 +143,7 @@ WMS_MODULES.picking = {
 
         <div style="margin-bottom:10px;">
           <span id="pkm-resumen" style="font-size:.8rem;color:var(--muted);font-weight:600;">Use los filtros y pulse Buscar</span>
+          <span id="pkm-vivo" style="font-size:.75rem;color:var(--ok);font-weight:700;margin-left:10px;"></span>
         </div>
 
         <!-- Una fila por PLANILLA + AMBIENTE (consolidado de todos sus pedidos) -->
@@ -182,6 +183,98 @@ WMS_MODULES.picking = {
         <button class="btn btn-success btn-sm" onclick="WMS_MODULES.picking._pkmCerrarPlanilla('${WMS.esc(foco).replace(/'/g, "\'")}')"><i class="fa-solid fa-lock"></i> Cerrar planilla</button>`);
     }
     await this._pkmBuscar();
+    this._pkmIniciarVivo();
+  },
+
+  // ── ACTUALIZACIÓN EN VIVO (2026-10-09, pedido de Camilo) ────────────────
+  // Lo que la terminal separa (líneas que pasan a Completado/Faltante) sale solo
+  // del Picking Manual: cada 15 s se vuelve a pedir /picking/manual/lineas (que ya
+  // trae SOLO lo pendiente: Pendiente/EnProceso) y, si cambió, se repinta sin perder
+  // lo digitado ni los grupos abiertos. No interrumpe a quien está escribiendo.
+  _pkmVivoTimer: null,
+  _pkmAplicando: false,
+
+  _pkmIniciarVivo() {
+    if (this._pkmVivoTimer) clearInterval(this._pkmVivoTimer);
+    this._pkmVivoTimer = setInterval(() => this._pkmTickVivo(), 15000);
+  },
+
+  async _pkmTickVivo() {
+    if (!document.getElementById('pkm-tbody')) {          // se salió de la sección
+      clearInterval(this._pkmVivoTimer); this._pkmVivoTimer = null; return;
+    }
+    if (this._pkmAplicando || this._pkmRefrescando || document.hidden) return;
+    const act = document.activeElement;
+    if (act && act.closest && act.closest('#pkm-tabla') && /^(INPUT|SELECT|TEXTAREA)$/.test(act.tagName)) return;
+    if (window.Swal && Swal.isVisible && Swal.isVisible()) return;
+    if (document.getElementById('pkm-ubic-dd')?.style.display === 'block') return;
+    await this._pkmRefrescarVivo();
+  },
+
+  /** Valores digitados (solo filas que el usuario cambió), por id de línea de pedido:
+   *  si la terminal separa parte de una referencia consolidada, sus ids cambian y lo
+   *  digitado se reubica en la fila que conserve alguna de esas líneas. */
+  _pkmCapturarDigitado(soloKey = null) {
+    const out = {};
+    Object.entries(this._pkmItems || {}).forEach(([key, items]) => {
+      if (soloKey && key !== soloKey) return;
+      (items || []).forEach((it, i) => {
+        const tr = document.getElementById(`pkm-it-${key}-${i}`);
+        if (!tr || tr.dataset.aplicado === '1') return;
+        const c = tr.querySelector('.pkm-cajas'), sl = tr.querySelector('.pkm-saldo'), k = tr.querySelector('.pkm-causal');
+        if (!c || !sl || !k) return;
+        if (c.value === c.defaultValue && sl.value === sl.defaultValue && !k.value) return;
+        String(it.ids).split(',').filter(Boolean).forEach(id => { out[id] = { c: c.value, s: sl.value, k: k.value }; });
+      });
+    });
+    return out;
+  },
+
+  async _pkmRefrescarVivo(forzar = false) {
+    if (this._pkmRefrescando) return;
+    this._pkmRefrescando = true;
+    const vivo = document.getElementById('pkm-vivo');
+    try {
+      const qs = this._pkmFiltrosQS();
+      const r = await API.get('/picking/manual/lineas' + (qs ? '?' + qs : ''));
+      const nuevos = Array.isArray(r.data) ? r.data : (r.data?.data || []);
+      const firma = d => d.map(x => `${x.linea_id}|${x.ubicacion_codigo || ''}|${x.lote || ''}`).sort().join(';');
+      if (!forzar && firma(nuevos) === firma(this._pkmData || [])) {
+        if (vivo) vivo.innerHTML = `<i class="fa-solid fa-circle" style="font-size:7px;vertical-align:middle;"></i> En vivo · actualizado ${new Date().toLocaleTimeString('es-CO')}`;
+        return;
+      }
+      // Qué se fue (separado/agotado en la terminal) — referencias por planilla+ambiente
+      const idsNuevos = new Set(nuevos.map(x => String(x.linea_id)));
+      const salieron = (this._pkmData || []).filter(x => !idsNuevos.has(String(x.linea_id)));
+      const refsQueSalen = new Set(salieron.filter(x => !nuevos.some(n => n.producto_id === x.producto_id && (n.planilla_numero || n.pedido) === (x.planilla_numero || x.pedido)))
+        .map(x => (x.planilla_numero || x.pedido) + '|' + x.producto_id));
+
+      const digitado = this._pkmCapturarDigitado();
+      const abiertos = (this._pkmGrupos || []).map(g => g.key)
+        .filter(k => this._pkmFoco || document.getElementById('pkm-sub-' + k)?.style.display === 'table-row');
+
+      this._pkmData = nuevos;
+      this._pkmItems = {};
+      this._pkmRenderPlanillas();
+      const siguen = new Set((this._pkmGrupos || []).map(g => g.key));
+      for (const k of abiertos) {
+        if (!siguen.has(k)) continue;
+        if (!this._pkmFoco) {
+          const row = document.getElementById('pkm-sub-' + k), icon = document.getElementById('pkm-icon-' + k);
+          if (row) row.style.display = 'table-row';
+          if (icon) icon.style.transform = 'rotate(90deg)';
+        }
+        await this._pkmCargarItems(k, digitado);
+      }
+      if (refsQueSalen.size) {
+        WMS.toast('info', `${refsQueSalen.size} referencia(s) ya separada(s) en la terminal se retiraron del Picking Manual`);
+      }
+      if (vivo) vivo.innerHTML = `<i class="fa-solid fa-circle" style="font-size:7px;vertical-align:middle;"></i> En vivo · actualizado ${new Date().toLocaleTimeString('es-CO')}`;
+    } catch (e) {
+      if (vivo) vivo.innerHTML = `<span style="color:var(--warn);"><i class="fa-solid fa-triangle-exclamation"></i> Sin actualizar (${WMS.esc(e.message || 'error')}) — se reintenta</span>`;
+    } finally {
+      this._pkmRefrescando = false;
+    }
   },
 
   /** Abre la planilla SOLA en otra pestaña del navegador (edición y cierre). */
@@ -378,12 +471,9 @@ WMS_MODULES.picking = {
     const g = (this._pkmGrupos || []).find(x => x.key === key);
     const cont = document.getElementById('pkm-cont-' + key);
     if (!g || !cont) return;
-    // Conservar lo ya digitado (cajas/saldo/causal) al recargar, p.ej. tras cambiar una ubicación
-    const previo = {};
-    if (conservar) (this._pkmItems[key] || []).forEach((it, i) => {
-      const tr = document.getElementById(`pkm-it-${key}-${i}`);
-      if (tr) previo[it.ids] = { c: tr.querySelector('.pkm-cajas').value, s: tr.querySelector('.pkm-saldo').value, k: tr.querySelector('.pkm-causal').value };
-    });
+    // Conservar lo ya digitado (cajas/saldo/causal) al recargar — tras cambiar una
+    // ubicación (conservar=true) o en la actualización en vivo (mapa id→valores).
+    const previo = (conservar && typeof conservar === 'object') ? conservar : (conservar ? this._pkmCapturarDigitado(key) : {});
     cont.innerHTML = '<div style="color:var(--muted);font-size:.8rem;"><i class="fa-solid fa-spinner fa-spin"></i> Cargando líneas consolidadas…</div>';
     try {
       const [r] = await Promise.all([
@@ -394,7 +484,7 @@ WMS_MODULES.picking = {
       this._pkmItems[key] = items;
       cont.innerHTML = this._pkmRenderItems(g, items);
       items.forEach((it, i) => {
-        const v = previo[it.ids]; const tr = document.getElementById(`pkm-it-${key}-${i}`);
+        const v = String(it.ids).split(',').map(id => previo[id]).find(Boolean); const tr = document.getElementById(`pkm-it-${key}-${i}`);
         if (v && tr) { tr.querySelector('.pkm-cajas').value = v.c; tr.querySelector('.pkm-saldo').value = v.s; tr.querySelector('.pkm-causal').value = v.k; }
         this._pkmRecalc(key, i);
       });
@@ -690,6 +780,7 @@ WMS_MODULES.picking = {
 
     const btn = document.getElementById('pkm-btn-aplicar-' + key);
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Aplicando…'; }
+    this._pkmAplicando = true;
     let ok = 0, err = 0;
     try {
       // Igual que la terminal: marcar la planilla en proceso (hora de inicio) antes de separar
@@ -749,8 +840,9 @@ WMS_MODULES.picking = {
           `${ok} referencia(s) aplicadas${err ? `, ${err} con error` : ''}.` +
           (pendientes ? ` La planilla se cerrará cuando se separen los ${pendientes} pendiente(s) de otros ambientes.` : ''));
       }
-      if (!err) setTimeout(() => this._pkmBuscar(), 1200);
+      if (!err) setTimeout(() => this._pkmRefrescarVivo(true), 1200);
     } finally {
+      this._pkmAplicando = false;
       if (btn) { btn.disabled = false; btn.innerHTML = `<i class="fa-solid fa-check-double"></i> Aplicar picking (planilla ${WMS.esc(g.planilla)} · ${WMS.esc(g.ambiente)})`; }
     }
   },
