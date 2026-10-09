@@ -320,6 +320,72 @@ class DashboardTVController extends BaseController
      * nivel de servicio siempre mostraba 100%. Se reemplaza por la misma lógica
      * ya validada en nivelServicio() (TV), factorizada en _nsCalcularRango().
      */
+    /**
+     * GET /api/tv/ingresos-chart?mes=YYYY-MM — gráfica "Cajas por Día" de la pestaña
+     * Ingresos (2026-10-09). La ruta existía desde que se creó la TV pero este método
+     * nunca se programó (500 en cada refresco). Cajas recibidas por día del mes, una
+     * serie por proveedor (top 7 + OTROS), con el mismo criterio de "Ingresos hoy":
+     * recepciones con y sin ODC por fecha_movimiento, empresa y sucursal.
+     * Respuesta: {labels:['01',...], series:[{proveedor, data:[...]}], total_cajas}
+     */
+    public function ingresosChart(Request $request, Response $response): Response
+    {
+        $user       = $request->getAttribute('user');
+        $empresaId  = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
+        $mes        = $request->getQueryParams()['mes'] ?? date('Y-m');
+        if (!preg_match('/^\d{4}-\d{2}$/', $mes)) $mes = date('Y-m');
+        $ini  = $mes . '-01';
+        $fin  = date('Y-m-t', strtotime($ini));
+        $hasta = ($mes === date('Y-m')) ? date('Y-m-d') : $fin;      // mes en curso: hasta hoy
+
+        try {
+            // Proveedor: ODC → el digitado en la captura sin ODC → la cita. Las capturas
+            // CDP por QR traen texto largo ("Cdp10420243,I BONDIOLA…") → se agrupan en 'CDP'.
+            $rows = Capsule::table('recepcion_detalles as rd')
+                ->join('recepciones as r', 'r.id', '=', 'rd.recepcion_id')
+                ->join('productos as pr', 'pr.id', '=', 'rd.producto_id')
+                ->leftJoin('ordenes_compra as oc', 'oc.id', '=', 'r.odc_id')
+                ->leftJoin('proveedores as pv', 'pv.id', '=', 'oc.proveedor_id')
+                ->leftJoin('citas as ci', 'ci.id', '=', 'r.cita_id')
+                ->where('r.empresa_id', $empresaId)
+                ->where('r.sucursal_id', $sucursalId)
+                ->whereBetween('r.fecha_movimiento', [$ini, $hasta])
+                ->groupBy(Capsule::raw('r.fecha_movimiento'), Capsule::raw('prov'))
+                ->selectRaw("to_char(r.fecha_movimiento, 'YYYY-MM-DD') as dia,
+                    CASE WHEN UPPER(TRIM(COALESCE(pv.razon_social, NULLIF(TRIM(rd.proveedor), ''), ci.proveedor, ''))) LIKE 'CDP%' THEN 'CDP'
+                         ELSE COALESCE(TRANSLATE(UPPER(TRIM(COALESCE(pv.razon_social, NULLIF(TRIM(rd.proveedor), ''), ci.proveedor))), 'ÁÉÍÓÚÜÑ', 'AEIOUUN'), 'SIN PROVEEDOR') END as prov,
+                    SUM(rd.cantidad_recibida / CASE WHEN pr.factor_udm > 0 THEN pr.factor_udm ELSE GREATEST(1, COALESCE(pr.unidades_caja, 1)) END) as cajas")
+                ->get();
+        } catch (\Throwable $e) {
+            wmsLog('ERROR', 'TV:ingresos-chart — ' . $e->getMessage());
+            return $this->error($response, 'No se pudo calcular la gráfica de ingresos', 500);
+        }
+
+        $dias = [];
+        for ($d = strtotime($ini); $d <= strtotime($hasta); $d += 86400) $dias[] = date('Y-m-d', $d);
+        $totProv = [];
+        foreach ($rows as $x) $totProv[$x->prov] = ($totProv[$x->prov] ?? 0) + (float)$x->cajas;
+        arsort($totProv);
+        $top = array_slice(array_keys($totProv), 0, 7);
+        $serie = [];
+        foreach ($rows as $x) {
+            $nombre = in_array($x->prov, $top, true) ? $x->prov : 'OTROS';
+            $serie[$nombre][$x->dia] = ($serie[$nombre][$x->dia] ?? 0) + (float)$x->cajas;
+        }
+        $nombres = array_values(array_filter(array_merge($top, ['OTROS']), fn($n) => isset($serie[$n])));
+
+        return $this->ok($response, [
+            'mes'    => $mes,
+            'labels' => array_map(fn($d) => substr($d, 8, 2), $dias),
+            'series' => array_map(fn($n) => [
+                'proveedor' => $n,
+                'data'      => array_map(fn($d) => round($serie[$n][$d] ?? 0, 1), $dias),
+            ], $nombres),
+            'total_cajas' => round(array_sum($totProv), 1),
+        ]);
+    }
+
     public function getNivelServicio(Request $request, Response $response): Response
     {
         $user       = $request->getAttribute('user');
