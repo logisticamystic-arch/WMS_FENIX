@@ -8304,8 +8304,16 @@ const MWMS = {
     // navegaba, este dato en memoria queda desactualizado. Se revalida contra el
     // servidor justo antes de mostrar "cantidad a separar", para que nunca se
     // muestre un número distinto al que realmente tiene el pedido en este momento.
+    // 2026-10-09: solo líneas PENDIENTES. Antes se pedía también 'Faltante' y esas
+    // líneas se mezclaban en la referencia: inflaban la cantidad a separar y el
+    // servidor rechazaba la confirmación (409). Si la referencia ya no está pendiente
+    // (la separó otro auxiliar o el Picking Manual del escritorio), se avisa y se
+    // vuelve a la lista actualizada en vez de mostrar un dato viejo.
+    let r = null;
     try {
-      const r = await mApi('GET', `/picking/planilla/${planillaNumero}?estado=Pendiente,EnProceso,Faltante`);
+      r = await mApi('GET', `/picking/planilla/${planillaNumero}?estado=Pendiente,EnProceso`);
+    } catch (_) { /* sin conexión momentánea: seguir con el dato en memoria en vez de bloquear al auxiliar */ }
+    if (r) {
       const fresh = (r.data || []).find(x =>
         x.producto_id === it.producto_id &&
         (x.ubicacion_id ?? null) === (it.ubicacion_id ?? null) &&
@@ -8316,7 +8324,10 @@ const MWMS = {
         this.renderPKConsolidado(fresh, planillaNumero);
         return;
       }
-    } catch (_) { /* sin conexión momentánea: seguir con el dato en memoria en vez de bloquear al auxiliar */ }
+      this.toast('Esta referencia ya fue separada o marcada como agotada (otro auxiliar o el escritorio). Se actualiza la lista.', 'info');
+      this.viewPlanilla(planillaNumero);
+      return;
+    }
 
     this.renderPKConsolidado(it, planillaNumero);
   },

@@ -1994,6 +1994,7 @@ class PickingController extends BaseController
                         'empresa_id'          => $this->getEffectiveEmpresaId($user, $r),
                         'sucursal_id'         => $user->sucursal_id,
                         'orden_picking_id'    => $linea->orden_picking_id,
+                        'picking_detalle_id'  => $linea->id,
                         'producto_id'         => $linea->producto_id,
                         'planilla_lote'       => $orden->planilla_lote ?? $orden->planilla_numero,
                         'cantidad_solicitada' => $linea->cantidad_solicitada,
@@ -2005,15 +2006,28 @@ class PickingController extends BaseController
                     ]);
                 }
 
-                // Si la línea quedó Completado, eliminar el faltante correspondiente
-                // (puede existir si este producto pasó por backorder o fue marcado agotado antes)
-                if ($linea->estado === 'Completado') {
-                    Capsule::table('picking_faltantes')
-                        ->where('orden_picking_id', $linea->orden_picking_id)
-                        ->where('producto_id', $linea->producto_id)
-                        ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
-                        ->where('causa', '<>', 'Separado sin Ubicación/Inventario')
-                        ->delete();
+                // Faltante del cliente de ESTA línea: se reemplaza el que tuviera (no los de
+                // otras líneas del mismo producto). Si quedó parcial ('Faltante') se registra
+                // lo que faltó — antes el flujo individual no lo registraba y el agotado no
+                // aparecía en el módulo de Agotados (el consolidado sí lo hacía).
+                $this->_borrarFaltantesDeLinea($linea, true);
+                if ($linea->estado === 'Faltante') {
+                    $faltaUnd = max(0, (float)$linea->cantidad_solicitada * $upc - $cantidadTomada);
+                    if ($faltaUnd > 0.0001) {
+                        Capsule::table('picking_faltantes')->insert([
+                            'empresa_id'          => $this->getEffectiveEmpresaId($user, $r),
+                            'sucursal_id'         => $user->sucursal_id,
+                            'orden_picking_id'    => $linea->orden_picking_id,
+                            'picking_detalle_id'  => $linea->id,
+                            'producto_id'         => $linea->producto_id,
+                            'planilla_lote'       => $orden->planilla_lote ?? $orden->planilla_numero,
+                            'cantidad_solicitada' => $linea->cantidad_solicitada,
+                            'cantidad_faltante'   => $upc > 0 ? $faltaUnd / $upc : $faltaUnd,
+                            'causa'               => 'Agotado — Separado parcial',
+                            'created_at'          => date('Y-m-d H:i:s'),
+                            'updated_at'          => date('Y-m-d H:i:s'),
+                        ]);
+                    }
                 }
 
                 // Verificar si todas las líneas están completas
@@ -4964,11 +4978,19 @@ class PickingController extends BaseController
 
         $linea = PickingDetalle::where('orden_picking_id', $orden->id)->find($lineaId);
         if (!$linea) return $this->notFound($res, 'Línea no encontrada');
+        // 2026-10-09: antes no validaba el estado — podía convertir en Faltante una línea
+        // ya SEPARADA (Completado), dejando su cantidad separada y liberando reserva de más.
+        if (!in_array($linea->estado, ['Pendiente', 'EnProceso'])) {
+            return $this->error($res, "Esta línea ya fue procesada ({$linea->estado}); no se puede reportar como faltante.", 409);
+        }
+        if ($orden->estado_certificacion === 'Certificada') {
+            return $this->error($res, 'Este pedido ya fue certificado — avise a su supervisor para recertificarlo.', 409);
+        }
 
         try {
             Capsule::transaction(function () use ($linea, $obs, $orden, $user, $r) {
                 if ($linea->producto_id && $linea->cantidad_solicitada > 0) {
-                    $upcFalt = max(1, (int)(Capsule::table('productos')->where('id', $linea->producto_id)->value('unidades_caja') ?? 1));
+                    $upcFalt = $this->_upcProducto($linea->producto_id);
                     $this->_releaseReserva(
                         $this->getEffectiveEmpresaId($user, $r), $user->sucursal_id,
                         $linea->producto_id, $linea->ubicacion_id, $linea->lote,
@@ -4980,17 +5002,16 @@ class PickingController extends BaseController
                 $linea->novedad = $obs ?: 'Sin stock disponible';
                 $linea->save();
 
-                // Registrar en picking_faltantes para módulo de backorder (si no existe ya)
-                $yaEnFaltantes = Capsule::table('picking_faltantes')
-                    ->where('orden_picking_id', $orden->id)
-                    ->where('producto_id', $linea->producto_id)
-                    ->exists();
-                if (!$yaEnFaltantes) {
+                // Registrar en picking_faltantes (por LÍNEA: antes, si otra línea del mismo
+                // producto ya tenía registro, el faltante de esta no quedaba)
+                $this->_borrarFaltantesDeLinea($linea);
+                {
                     $nowFalt = date('Y-m-d H:i:s');
                     Capsule::table('picking_faltantes')->insert([
                         'empresa_id'          => $this->getEffectiveEmpresaId($user, $r),
                         'sucursal_id'         => $user->sucursal_id,
                         'orden_picking_id'    => $orden->id,
+                        'picking_detalle_id'  => $linea->id,
                         'producto_id'         => $linea->producto_id,
                         'planilla_lote'       => $orden->planilla_lote ?? $orden->planilla_numero ?? null,
                         'cantidad_solicitada' => $linea->cantidad_solicitada,
@@ -6002,11 +6023,9 @@ class PickingController extends BaseController
                     // ruido de punto flotante que en realidad es cero.
                     $faltanteFisicoUnd = max(0, ((float)$det->cantidad_solicitada * $upcConf) - $tomarInventario - 0.0001);
                     
-                    // Eliminar registro previo de faltante si existía
-                    Capsule::table('picking_faltantes')
-                        ->where('orden_picking_id', $det->orden_picking_id)
-                        ->where('producto_id', $det->producto_id)
-                        ->delete();
+                    // Eliminar registro previo de faltante de ESTA línea (no de otras
+                    // líneas del mismo producto en el pedido — ver _borrarFaltantesDeLinea)
+                    $this->_borrarFaltantesDeLinea($det);
 
                     if ($faltanteFisicoUnd > 0) {
                         $faltanteCajas = $upcConf > 0 ? ($faltanteFisicoUnd / $upcConf) : $faltanteFisicoUnd;
@@ -6015,6 +6034,7 @@ class PickingController extends BaseController
                             'empresa_id'          => $this->getEffectiveEmpresaId($user, $r),
                             'sucursal_id'         => $user->sucursal_id,
                             'orden_picking_id'    => $det->orden_picking_id,
+                            'picking_detalle_id'  => $det->id,
                             'producto_id'         => $det->producto_id,
                             'planilla_lote'       => $ord->planilla_lote ?? $ord->planilla_numero,
                             'cantidad_solicitada' => $det->cantidad_solicitada,
@@ -6054,6 +6074,7 @@ class PickingController extends BaseController
                                 'empresa_id'          => $this->getEffectiveEmpresaId($user, $r),
                                 'sucursal_id'         => $user->sucursal_id,
                                 'orden_picking_id'    => $det->orden_picking_id,
+                                'picking_detalle_id'  => $det->id,
                                 'producto_id'         => $det->producto_id,
                                 'planilla_lote'       => $ordSinInv->planilla_lote ?? $ordSinInv->planilla_numero,
                                 'cantidad_solicitada' => $det->cantidad_solicitada,
@@ -6136,11 +6157,18 @@ class PickingController extends BaseController
         if ($detalles->isEmpty()) {
             return $this->error($res, 'Líneas no encontradas.', 404);
         }
+        // 2026-10-09: mismo blindaje que confirmar — un pedido ya certificado no se toca
+        $cert = $detalles->first(fn($d) => $d->ordenPicking && $d->ordenPicking->estado_certificacion === 'Certificada'
+            && in_array($d->estado, ['Pendiente', 'EnProceso']));
+        if ($cert) {
+            return $this->error($res, "El pedido {$cert->ordenPicking->numero_orden} ya fue certificado — no se puede marcar agotado sin que un supervisor lo recertifique.", 409);
+        }
 
         $now = date('Y-m-d H:i:s');
+        $procesadas = 0;
 
         try {
-            Capsule::transaction(function () use ($detalles, $obs, $causalId, $user, $r, $now) {
+            Capsule::transaction(function () use ($detalles, $obs, $causalId, $user, $r, $now, &$procesadas) {
                 $ordenIds = [];
 
                 foreach ($detalles as $det) {
@@ -6148,9 +6176,10 @@ class PickingController extends BaseController
                         continue; // ya procesada
                     }
 
-                    // 1. Liberar reserva de inventario (en unidades)
+                    // 1. Liberar reserva de inventario (en unidades; U/E real con factor_udm,
+                    //    antes unidades_caja — en productos por gramos liberaba de menos)
                     if ($det->producto_id && $det->cantidad_solicitada > 0) {
-                        $upcAgo = max(1, (int)(Capsule::table('productos')->where('id', $det->producto_id)->value('unidades_caja') ?? 1));
+                        $upcAgo = $this->_upcProducto($det->producto_id);
                         $this->_releaseReserva(
                             $this->getEffectiveEmpresaId($user, $r), $user->sucursal_id,
                             $det->producto_id, $det->ubicacion_id, $det->lote,
@@ -6164,11 +6193,14 @@ class PickingController extends BaseController
                     $det->cantidad_pickeada = 0;
                     $det->save();
 
-                    // 3. Registrar en picking_faltantes
+                    // 3. Registrar en picking_faltantes (reemplaza el de esta línea si ya
+                    //    existía — p.ej. línea liberada y vuelta a marcar: no duplica)
+                    $this->_borrarFaltantesDeLinea($det);
                     Capsule::table('picking_faltantes')->insert([
                         'empresa_id'          => $this->getEffectiveEmpresaId($user, $r),
                         'sucursal_id'         => $user->sucursal_id,
                         'orden_picking_id'    => $det->orden_picking_id,
+                        'picking_detalle_id'  => $det->id,
                         'producto_id'         => $det->producto_id,
                         'planilla_lote'       => $det->ordenPicking->planilla_lote
                                                  ?? $det->ordenPicking->planilla_numero
@@ -6182,6 +6214,7 @@ class PickingController extends BaseController
                     ]);
 
                     $ordenIds[] = $det->orden_picking_id;
+                    $procesadas++;
                 }
 
                 // 4. Cerrar órdenes padre si todas sus líneas quedaron resueltas
@@ -6198,10 +6231,13 @@ class PickingController extends BaseController
 
             $this->audit($user, 'picking', 'marcar_agotado', 'picking_detalles', null,
                 null, ['ids' => implode(',', $ids), 'observacion' => $obs],
-                'Picking marcado como agotado — ' . count($detalles) . ' líneas');
+                'Picking marcado como agotado — ' . $procesadas . ' líneas');
 
-            return $this->ok($res, ['agotados' => count($detalles)],
-                count($detalles) . ' línea(s) marcadas como agotadas y removidas del pendiente.');
+            // Cuenta solo las que realmente estaban pendientes (antes contaba también
+            // las ya procesadas que se saltaban)
+            return $this->ok($res, ['agotados' => $procesadas, 'omitidas' => count($detalles) - $procesadas],
+                $procesadas . ' línea(s) marcadas como agotadas y removidas del pendiente.'
+                . (count($detalles) > $procesadas ? ' ' . (count($detalles) - $procesadas) . ' ya estaban procesadas.' : ''));
 
         } catch (\Exception $e) {
             error_log('PickingController::marcarAgotadoConsolidado error: ' . $e->getMessage());
@@ -10396,6 +10432,36 @@ class PickingController extends BaseController
      * Single-query check (COUNT + conditional SUM) instead of two separate COUNTs.
      * Saves the order. Must be called inside an open transaction with lockForUpdate on $orden.
      */
+    /**
+     * Borra los registros de picking_faltantes que pertenecen a ESTA línea (2026-10-09).
+     * Antes se borraba por pedido + producto: si el pedido tenía el mismo producto en
+     * varias líneas (split por ubicación), confirmar una borraba el agotado real de la
+     * otra. Los registros antiguos sin línea (picking_detalle_id NULL) solo se borran si
+     * el pedido tiene una única línea de ese producto (entonces son de esta línea).
+     * $conservarSinInventario: no tocar 'Separado sin Ubicación/Inventario' (conciliación).
+     */
+    private function _borrarFaltantesDeLinea(PickingDetalle $det, bool $conservarSinInventario = false): void
+    {
+        $unicaLinea = PickingDetalle::where('orden_picking_id', $det->orden_picking_id)
+            ->where('producto_id', $det->producto_id)->count() <= 1;
+        Capsule::table('picking_faltantes')
+            ->where('orden_picking_id', $det->orden_picking_id)
+            ->where('producto_id', $det->producto_id)
+            ->where(function ($q) use ($det, $unicaLinea) {
+                $q->where('picking_detalle_id', $det->id);
+                if ($unicaLinea) $q->orWhereNull('picking_detalle_id');
+            })
+            ->when($conservarSinInventario, fn($q) => $q->where('causa', '<>', 'Separado sin Ubicación/Inventario'))
+            ->delete();
+    }
+
+    /** U/E real: factor_udm manda; si no, unidades_caja (mismo criterio del resto del sistema). */
+    private function _upcProducto(?int $productoId): float
+    {
+        $p = $productoId ? Capsule::table('productos')->where('id', $productoId)->first(['factor_udm', 'unidades_caja']) : null;
+        return ($p && (float)$p->factor_udm > 0) ? (float)$p->factor_udm : max(1, (float)($p->unidades_caja ?? 1));
+    }
+
     private function _closeOrdenIfDone(OrdenPicking $orden, bool $setHoraInicio = false): void
     {
         if ($setHoraInicio && (empty($orden->hora_inicio) || $orden->hora_inicio === '00:00:00')) {
