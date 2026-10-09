@@ -20,13 +20,13 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 
   <!-- Chart.js -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="assets/vendor/chart.umd.min.js"></script>
   <!-- chartjs-plugin-datalabels — registrado global pero deshabilitado por defecto
        (Chart.defaults.plugins.datalabels.display=false abajo); cada módulo que
        quiera mostrar cifras sobre sus gráficos lo habilita explícitamente por
        chart (ver public/assets/js/desktop/devoluciones.js) para no afectar los
        demás dashboards de la app. -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
+  <script src="assets/vendor/chartjs-plugin-datalabels.min.js"></script>
   <script>
     if (window.Chart && window.ChartDataLabels) {
       Chart.register(ChartDataLabels);
