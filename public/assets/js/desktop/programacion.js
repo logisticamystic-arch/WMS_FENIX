@@ -46,11 +46,9 @@ WMS_MODULES.programacion = {
           <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.programacion.navegar(-1)" title="Anterior"><i class="fa-solid fa-chevron-left"></i></button>
           <span id="prog-rango" style="font-weight:600;min-width:180px;text-align:center;"></span>
           <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.programacion.navegar(1)" title="Siguiente"><i class="fa-solid fa-chevron-right"></i></button>
-          <label style="display:flex;align-items:center;gap:6px;margin-left:12px;font-size:.78rem;color:#334155;" title="Ancho de columnas">
-            <i class="fa-solid fa-arrows-left-right"></i>
-            <input type="range" id="prog-ancho" min="80" max="320" step="10" style="width:120px;">
-            <span id="prog-ancho-lbl" style="min-width:40px;color:#64748b;">140 px</span>
-          </label>
+          <button class="btn btn-secondary btn-sm" style="margin-left:12px;" title="Resetear anchos personalizados" onclick="WMS_MODULES.programacion.resetAnchoColumnas()">
+            <i class="fa-solid fa-arrows-left-right-to-line"></i>
+          </button>
           <span style="margin-left:auto;font-size:.8rem;color:#64748b;">
             <span style="display:inline-block;width:12px;height:12px;background:#fee2e2;border:1px solid #fca5a5;vertical-align:middle;margin-right:4px;"></span>Festivo
             <span style="display:inline-block;width:12px;height:12px;background:#f1f5f9;border:1px solid #cbd5e1;vertical-align:middle;margin-left:12px;margin-right:4px;"></span>Fin de semana
@@ -73,6 +71,9 @@ WMS_MODULES.programacion = {
            hace scroll horizontal. */
         .prog-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(var(--prog-cell-min,140px),auto));}
         .prog-cal-hdr{background:#1e293b;color:#fff;font-weight:700;font-size:.78rem;text-align:center;padding:8px 4px;border-right:1px solid #334155;container-type:inline-size;white-space:nowrap;position:sticky;top:0;z-index:2;}
+        .prog-cal-hdr{position:relative;}
+        .prog-col-resize{position:absolute;top:0;right:-3px;width:7px;height:100%;cursor:col-resize;z-index:3;}
+        .prog-col-resize:hover{background:rgba(43,95,199,.5);}
         .prog-cal-hdr:nth-child(7){border-right:none;}
         .prog-cal-hdr .dow-long{display:none;}
         .prog-cal-hdr .dow-short{display:inline;}
@@ -109,23 +110,52 @@ WMS_MODULES.programacion = {
       this.cargarMatriz();
     });
 
-    // ── Ancho de celdas: slider con persistencia por usuario ──────────────
-    const anchoInput = document.getElementById('prog-ancho');
-    const anchoLbl   = document.getElementById('prog-ancho-lbl');
-    const guardado   = Number(localStorage.getItem('prog_cell_min')) || 140;
-    const aplicar = (px) => {
-      document.documentElement.style.setProperty('--prog-cell-min', px + 'px');
-      anchoLbl.textContent = px + ' px';
-      anchoInput.value = px;
-    };
-    aplicar(guardado);
-    anchoInput.addEventListener('input', (e) => {
-      const px = Number(e.target.value);
-      aplicar(px);
-      try { localStorage.setItem('prog_cell_min', String(px)); } catch (_) {}
-    });
+    // Cargar anchos por columna guardados
+    try { this._colsAncho = JSON.parse(localStorage.getItem('prog_cols_ancho')) || Array(7).fill(null); }
+    catch (_) { this._colsAncho = Array(7).fill(null); }
 
     this.cargarMatriz();
+  },
+
+  // ── Resize por columna del cronograma (handle en cada header) ───────────
+  _colsAncho: null,
+  _aplicarColsCss() {
+    const grid = document.querySelector('.prog-cal-grid');
+    if (!grid || !this._colsAncho) return;
+    grid.style.gridTemplateColumns = this._colsAncho
+      .map(w => w ? `${w}px` : 'minmax(var(--prog-cell-min,140px),auto)')
+      .join(' ');
+  },
+  iniciarResize(ev, colIdx) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const startX = ev.clientX;
+    const hdr = ev.currentTarget.parentElement;
+    const startW = hdr.getBoundingClientRect().width;
+    const onMove = (e) => {
+      const w = Math.max(80, Math.round(startW + (e.clientX - startX)));
+      this._colsAncho[colIdx] = w;
+      this._aplicarColsCss();
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      try { localStorage.setItem('prog_cols_ancho', JSON.stringify(this._colsAncho)); } catch (_) {}
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  },
+  resetAnchoColumna(colIdx, ev) {
+    if (ev) ev.stopPropagation();
+    this._colsAncho[colIdx] = null;
+    this._aplicarColsCss();
+    try { localStorage.setItem('prog_cols_ancho', JSON.stringify(this._colsAncho)); } catch (_) {}
+  },
+  resetAnchoColumnas() {
+    this._colsAncho = Array(7).fill(null);
+    this._aplicarColsCss();
+    try { localStorage.removeItem('prog_cols_ancho'); } catch (_) {}
+    WMS.toast('success', 'Anchos restablecidos');
   },
 
   cambiarVista(v) {
@@ -225,7 +255,12 @@ WMS_MODULES.programacion = {
 
     let html = `<div class="prog-cal-grid">` +
       nombresCorto.map((n, i) =>
-        `<div class="prog-cal-hdr"><span class="dow-short">${n}</span><span class="dow-long">${nombresLargo[i]}</span></div>`
+        `<div class="prog-cal-hdr">
+          <span class="dow-short">${n}</span><span class="dow-long">${nombresLargo[i]}</span>
+          <span class="prog-col-resize" title="Arrastra para ajustar ancho · doble-click para resetear"
+                onmousedown="WMS_MODULES.programacion.iniciarResize(event,${i})"
+                ondblclick="WMS_MODULES.programacion.resetAnchoColumna(${i},event)"></span>
+        </div>`
       ).join('');
     for (const sem of semanasVisibles) {
       for (const d of sem) {
@@ -264,6 +299,7 @@ WMS_MODULES.programacion = {
     }
     html += `</div>`; // cierre .prog-cal-grid
     document.getElementById('prog-cal-wrap').innerHTML = html + this.renderLeyenda();
+    this._aplicarColsCss(); // restaurar anchos personalizados tras cada render
 
     // Rango label
     const prim = semanasVisibles[0][0];
