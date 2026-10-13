@@ -29,7 +29,7 @@
   --font: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
 }
 
-﻿/* ===== RESET Y BASE ===== */
+/* ===== RESET Y BASE ===== */
 * {
   margin: 0;
   padding: 0;
@@ -400,16 +400,16 @@ body {
 .module-icon-circle.blue { background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%); }
 .module-icon-circle.indigo { background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%); }
 .module-icon-circle.teal { background: linear-gradient(135deg, #14b8a6 0%, #0f766e 100%); }
-.module-icon-circle.orange { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
-.module-icon-circle.green { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+.module-icon-circle.orange { background: linear-gradient(135deg, var(--warn) 0%, var(--warn) 100%); }
+.module-icon-circle.green { background: linear-gradient(135deg, var(--ok) 0%, var(--ok) 100%); }
 .module-icon-circle.purple { background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); }
 .module-icon-circle.pink { background: linear-gradient(135deg, #ec4899 0%, #db2777 100%); }
-.module-icon-circle.red { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+.module-icon-circle.red { background: linear-gradient(135deg, var(--danger) 0%, var(--danger) 100%); }
 .module-icon-circle.gray { background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%); }
-.module-icon-circle.emerald { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+.module-icon-circle.emerald { background: linear-gradient(135deg, var(--ok) 0%, var(--ok) 100%); }
 .module-icon-circle.rose { background: linear-gradient(135deg, #f43f5e 0%, #e11d48 100%); }
 .module-icon-circle.cyan { background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); }
-.module-icon-circle.amber { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+.module-icon-circle.amber { background: linear-gradient(135deg, var(--warn) 0%, var(--warn) 100%); }
 .module-icon-circle.secondary { background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%); }
 
 .module-label {
@@ -1234,7 +1234,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .m-btn-primary:active, .m-btn.primary:active, .btn-login-main:hover, .btn-login-main:active { background: var(--accent2); }
 /* .m-btn success/secondary/warning se usaban en ~70 botones sin regla CSS */
 .m-btn-success, .m-btn.success, .picking-nav-btn.confirm { background: var(--ok); color: #fff; }
-.m-btn-success:active, .m-btn.success:active { background: #15803d; }
+.m-btn-success:active, .m-btn.success:active { background: var(--ok); }
 .m-btn-secondary, .m-btn.secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
 .m-btn-secondary:active, .m-btn.secondary:active { background: var(--btn-neutral); }
 .m-btn.warning { background: var(--warn); color: #fff; }
@@ -1260,9 +1260,9 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 /* Badges tipo pastilla */
 .m-badge { border-radius: 999px; padding: 2px 10px; font-size: .7rem; font-weight: 700; background: var(--btn-neutral); color: var(--text); }
 .m-badge.proceso, .m-badge.info { background: var(--info-bg); color: var(--accent2); }
-.m-badge.warning { background: var(--warn-bg); color: #92400e; }
-.m-badge.success { background: var(--ok-bg); color: #166534; }
-.m-badge.danger { background: var(--danger-bg); color: #991b1b; }
+.m-badge.warning { background: var(--warn-bg); color: var(--warn); }
+.m-badge.success { background: var(--ok-bg); color: var(--ok); }
+.m-badge.danger { background: var(--danger-bg); color: var(--danger); }
 .m-badge.pallet-num { background: var(--text); color: #fff; }
 
 /* Progreso */
@@ -1312,3 +1312,47 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   .m-modal-content, .m-toast-item { animation: none !important; }
 }
+
+/* =====================================================================
+   BEE MÓVIL v3 (2026-10-12) — igual al escritorio: iconos en pastilla
+   suave, modo oscuro (mismo botón y misma preferencia 'wms-theme').
+   ===================================================================== */
+html.dark {
+  --accent: #60a5fa;  --accent2: #3b82f6;
+  --bg: #0f172a;      --bg2: #1e293b;
+  --surface: #1e293b;
+  --text: #f1f5f9;    --text2: #cbd5e1;
+  --muted: #94a3b8;   --text-muted: #64748b;
+  --ok: #4ade80;      --ok-bg: #4ade8040;
+  --warn: #fbbf24;    --warn-bg: #fbbf2440;
+  --danger: #f87171;  --danger-bg: #f8717140;
+  --info: #60a5fa;    --info-bg: #60a5fa40;
+  --border: #334155;  --border-light: #1e293b;
+  --btn-neutral: #334155;
+  --table-header-bg: #273449;
+  --shadow: 0 1px 3px #0000004d;
+  --shadow-md: 0 4px 6px -1px #0006;
+  --shadow-lg: 0 10px 15px -3px #00000080;
+  --shadow-modal: 0 25px 50px -12px #0009;
+  --focus-ring: #60a5fa8c;
+  --overlay: #000000a6;
+  color-scheme: dark;
+}
+html.dark input:not([type=checkbox]):not([type=radio]), html.dark select, html.dark textarea {
+  background-color: var(--surface); color: var(--text); border-color: var(--border);
+}
+html.dark .swal2-popup { background: var(--surface) !important; color: var(--text) !important; }
+html.dark .swal2-input, html.dark .swal2-select, html.dark .swal2-textarea { background: var(--surface) !important; color: var(--text) !important; }
+html.dark .m-toast-item { color: #fff; }
+html.dark .m-badge.warning, html.dark .m-badge.success, html.dark .m-badge.danger { color: var(--text); }
+
+/* Iconos del menú: círculo pastel + icono de color (como los KPI del escritorio) */
+.module-icon-circle { background: var(--info-bg); color: var(--accent); }
+.module-icon-circle:is(.blue, .indigo, .cyan, .teal, .purple, .fuchsia) { background: var(--info-bg); color: var(--accent); }
+.module-icon-circle:is(.green, .emerald, .lime) { background: var(--ok-bg); color: var(--ok); }
+.module-icon-circle:is(.orange, .amber) { background: var(--warn-bg); color: var(--warn); }
+.module-icon-circle:is(.red, .rose, .pink) { background: var(--danger-bg); color: var(--danger); }
+.module-icon-circle:is(.gray, .secondary) { background: var(--btn-neutral); color: var(--text2); }
+.module-btn-mobile { border-color: var(--border-light); }
+.module-btn-mobile:active .module-icon-circle { transform: scale(.94); }
+#btn-theme i { transition: transform .3s; }

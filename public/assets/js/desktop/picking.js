@@ -6036,7 +6036,8 @@ WMS_MODULES.picking = {
     `);
     WMS.spinner();
     try {
-      const qs  = `fecha_inicio=${f.ini}&fecha_fin=${f.fin}&sucursal_entrega=${encodeURIComponent(f.sucursal||'')}&referencia=${encodeURIComponent(f.referencia||'')}&incluir_conciliacion=${f.incluirConciliacion ? '1' : '0'}`;
+      // excluir_archivados: lo archivado en "Agotados del día" no es agotado real (2026-10-12)
+      const qs  = `fecha_inicio=${f.ini}&fecha_fin=${f.fin}&sucursal_entrega=${encodeURIComponent(f.sucursal||'')}&referencia=${encodeURIComponent(f.referencia||'')}&incluir_conciliacion=${f.incluirConciliacion ? '1' : '0'}&excluir_archivados=1`;
       const r   = await API.get('/picking/agotados', qs);
       const d   = r.data || {};
       const rows = Array.isArray(d.rows) ? d.rows : [];
@@ -6289,9 +6290,10 @@ WMS_MODULES.picking = {
               </div>
               <div style="flex:1;min-width:200px;">
                 <label class="form-label" style="display:block;margin-bottom:3px;">📦 REFERENCIA O PRODUCTO</label>
-                <input id="agot-ref" class="form-control form-control-sm" placeholder="Buscar por código o nombre..." value="${WMS.esc(f.referencia||'')}" autocomplete="off"
-                       oninput="clearTimeout(WMS_MODULES.picking._agotRefT); WMS_MODULES.picking._agotRefT = setTimeout(() => { const v = this.value.trim(); if (v.length === 0 || v.length >= 2) { WMS_MODULES.picking._agotRefFoco = true; WMS_MODULES.picking._applyAgotFilters(); } }, 600)"
+                <input id="agot-ref" class="form-control form-control-sm" placeholder="Código o nombre, palabras en cualquier orden..." value="${WMS.esc(f.referencia||'')}" autocomplete="off" list="agot-ref-list"
+                       oninput="clearTimeout(WMS_MODULES.picking._agotRefT); WMS_MODULES.picking._agotRefT = setTimeout(() => { WMS_MODULES.picking._agotRefFoco = true; WMS_MODULES.picking._applyAgotFilters(); }, 300)"
                        onkeydown="if(event.key==='Enter'){event.preventDefault();clearTimeout(WMS_MODULES.picking._agotRefT);WMS_MODULES.picking._applyAgotFilters();}">
+                <datalist id="agot-ref-list">${refArray.slice(0, 200).map(x => `<option value="${WMS.esc(x.codigo || '')}">${WMS.esc(x.nombre || '')}</option>`).join('')}</datalist>
               </div>
               <div style="display:flex;align-items:center;gap:6px;padding-bottom:5px;" title="Por defecto se excluyen los registros donde el auxiliar SÍ separó el 100% físico y solo faltó conciliar el inventario en el sistema — esos no son agotados reales para el cliente.">
                 <input type="checkbox" id="agot-incluir-conciliacion" ${f.incluirConciliacion ? 'checked' : ''} style="width:16px;height:16px;cursor:pointer;" onchange="WMS_MODULES.picking._applyAgotFilters()">
@@ -6454,7 +6456,7 @@ WMS_MODULES.picking = {
             <div id="tab-dia" class="agot-tab-pane" style="display:none;padding:16px;">
               <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
                 <label class="form-label" style="margin:0;">Día</label>
-                <input type="date" id="agot-dia-fecha" class="form-control form-control-sm" style="width:160px;" value="${f.fin}" onchange="WMS_MODULES.picking._agotCargarDia()">
+                <input type="date" id="agot-dia-fecha" class="form-control form-control-sm" style="width:160px;" value="${this._agotDiaFecha || f.fin}" onchange="WMS_MODULES.picking._agotDiaFecha = this.value; WMS_MODULES.picking._agotCargarDia()">
                 <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.picking._agotCopiarDia()"><i class="fa-solid fa-copy"></i> Copiar texto</button>
                 <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.picking._agotImprimirDia()"><i class="fa-solid fa-print"></i> Imprimir</button>
                 <span style="font-size:11px;color:var(--muted);">Escriba la justificación de cada referencia: se guarda para ESE día (otro día puede tener otra).</span>
@@ -6756,12 +6758,18 @@ WMS_MODULES.picking = {
       rows.forEach(r => {
         const k = r.producto_id || r.producto_codigo;
         const upc = this._agotUpc(r);
-        por[k] = por[k] || { producto_id: r.producto_id, codigo: r.producto_codigo || '-', nombre: r.producto_nombre || '-', upc, sol: 0, pend: 0, sospechosa: false };
+        por[k] = por[k] || { producto_id: r.producto_id, codigo: r.producto_codigo || '-', nombre: r.producto_nombre || '-', upc, sol: 0, pend: 0, sospechosa: false, sucs: new Set() };
+        por[k].sucs.add(r.sucursal_entrega || r.cliente || '—');
         if (r.cantidad_sospechosa) { por[k].sospechosa = true; return; }   // no suma cantidades irreales
         por[k].sol  += (parseFloat(r.cantidad_solicitada) || 0);
         por[k].pend += (parseFloat(r.cantidad_faltante) || 0);
       });
-      const lista = Object.values(por).sort((a, b) => b.pend - a.pend);
+      // Archivados (2026-10-12): referencias justificadas que no son agotado real
+      // (p. ej. salen más tarde en ruta) no entran al informe del día.
+      const todas = Object.values(por).sort((a, b) => b.pend - a.pend);
+      const esArch = x => !!obs[x.producto_id + '|' + fecha]?.archivado_at;
+      const lista = todas.filter(x => !esArch(x));
+      const archivados = todas.filter(esArch);
       const esHoy = fecha === WMS.getToday();
       const saludo = esHoy ? 'Buenos días, estos son los agotados del día de hoy'
                            : `Buenos días, estos son los agotados del día ${WMS.formatDate(fecha)}`;
@@ -6778,7 +6786,7 @@ WMS_MODULES.picking = {
               <thead><tr>
                 <th>Código</th><th>Referencia</th>
                 <th style="text-align:center;">Cant. solicitada</th><th style="text-align:center;">Cant. pendiente</th>
-                <th>Observaciones</th>
+                <th>Observaciones</th><th style="text-align:center;">Acción</th>
               </tr></thead>
               <tbody>${lista.map(x => `<tr>
                 <td style="font-family:monospace;font-weight:700;color:var(--accent2);">${WMS.esc(x.codigo)}</td>
@@ -6786,12 +6794,47 @@ WMS_MODULES.picking = {
                 <td style="text-align:center;">${cant(x.sol, x.upc)}</td>
                 <td style="text-align:center;color:var(--danger);">${cant(x.pend, x.upc)}</td>
                 <td>${this._agotObsCampo(x.producto_id, fecha, obs[x.producto_id + '|' + fecha], false)}${x.sospechosa ? '<div style="font-size:10px;color:var(--warn);"><i class="fa-solid fa-triangle-exclamation"></i> Tiene una línea con cantidad sospechosa (no sumada)</div>' : ''}</td>
-              </tr>`).join('') || '<tr><td colspan="5" class="table-empty">No hubo agotados este día</td></tr>'}</tbody>
+                <td style="text-align:center;"><button class="btn btn-sm btn-outline-secondary" title="Archivar: no es agotado real (requiere justificación)" onclick="WMS_MODULES.picking._agotArchivar(${x.producto_id}, '${fecha}', true)"><i class="fa-solid fa-box-archive"></i> Archivar</button></td>
+              </tr>`).join('') || '<tr><td colspan="6" class="table-empty">No hubo agotados este día</td></tr>'}</tbody>
             </table>
           </div>
-        </div>`;
+        </div>
+        ${archivados.length ? `<details style="margin-top:14px;" ${this._agotVerArch ? 'open' : ''} ontoggle="WMS_MODULES.picking._agotVerArch = this.open">
+          <summary style="cursor:pointer;font-weight:700;font-size:12px;color:var(--muted);"><i class="fa-solid fa-box-archive"></i> Archivados (${archivados.length}) — no salen en el informe del día</summary>
+          <div class="table-container" style="overflow-x:auto;margin-top:8px;">
+            <table class="erp-table" style="font-size:12px;opacity:.85;">
+              <thead><tr><th>Código</th><th>Referencia</th><th style="text-align:center;">Cant. pendiente</th><th>Justificación</th><th>Archivado</th><th style="text-align:center;">Acción</th></tr></thead>
+              <tbody>${archivados.map(x => { const o = obs[x.producto_id + '|' + fecha]; return `<tr>
+                <td style="font-family:monospace;font-weight:700;">${WMS.esc(x.codigo)}</td>
+                <td>${WMS.esc(x.nombre)}</td>
+                <td style="text-align:center;">${cant(x.pend, x.upc)}</td>
+                <td>${WMS.esc(o.observacion)}</td>
+                <td style="font-size:10.5px;color:var(--muted);">${WMS.esc(o.archivado_por || '')}<br>${WMS.formatDateTime(o.archivado_at)}</td>
+                <td style="text-align:center;"><button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.picking._agotArchivar(${x.producto_id}, '${fecha}', false)"><i class="fa-solid fa-rotate-left"></i> Restaurar</button></td>
+              </tr>`; }).join('')}</tbody>
+            </table>
+          </div>
+        </details>` : ''}`;
     } catch (e) {
       cont.innerHTML = `<div class="m-empty"><i class="fa-solid fa-triangle-exclamation"></i><p>${WMS.esc(e.message || 'Error cargando los agotados del día')}</p></div>`;
+    }
+  },
+
+  /** Archiva / restaura el agotado de una referencia en un día (archivar exige justificación). */
+  async _agotArchivar(prodId, fecha, archivar) {
+    if (archivar) {
+      const t = document.querySelector(`#agot-dia-body textarea.agot-obs[data-prod="${prodId}"][data-fecha="${fecha}"]`);
+      if (!t || !t.value.trim()) { WMS.toast('warning', 'Escriba la justificación antes de archivar'); t?.focus(); return; }
+      if (!(this._agotObs?.[prodId + '|' + fecha] || this._agotDia?.obs?.[prodId + '|' + fecha])) await this._agotGuardarObs(t);
+    }
+    try {
+      const r = await API.put('/picking/agotados/archivar', { producto_id: prodId, fecha, archivar });
+      WMS.toast('success', r.message || 'Listo');
+      // recargar todo: consolidado y gráficos excluyen lo archivado; vuelve a la pestaña del día
+      this._agotDiaFecha = fecha;
+      this._applyAgotFilters();
+    } catch (e) {
+      WMS.toast('error', e.message || 'No se pudo actualizar el agotado');
     }
   },
 
@@ -6810,15 +6853,14 @@ WMS_MODULES.picking = {
   _agotImprimirDia() {
     const d = this._agotDia;
     if (!d) return;
-    const fmt = (cj, upc) => `${WMS.formatNum(cj)} cj` + (upc > 1 ? ` (${WMS.formatNum(Math.round(cj * upc * 1000) / 1000)} und)` : '');
     const w = window.open('', '_blank');
     if (!w) return WMS.toast('warning', 'Permita ventanas emergentes para imprimir');
     w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Agotados del día ${WMS.formatDate(d.fecha)}</title>
       <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}h2{margin:0 0 4px}p{color:#555;margin:0 0 14px}
       table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;vertical-align:top}th{background:#f1f5f9}</style></head><body>
       <h2>${WMS.esc(d.saludo)}</h2><p>${WMS.formatDate(d.fecha)} · ${d.lista.length} referencia(s)</p>
-      <table><thead><tr><th>Código</th><th>Referencia</th><th>Cant. solicitada</th><th>Cant. pendiente</th><th>Observaciones</th></tr></thead><tbody>
-      ${d.lista.map(x => `<tr><td>${WMS.esc(x.codigo)}</td><td>${WMS.esc(x.nombre)}</td><td>${fmt(x.sol, x.upc)}</td><td>${fmt(x.pend, x.upc)}</td><td>${WMS.esc(this._agotObsTexto(x.producto_id, d.fecha))}</td></tr>`).join('')}
+      <table><thead><tr><th>Referencia</th><th>Observaciones</th><th style="text-align:center">Sucursales impactadas</th></tr></thead><tbody>
+      ${d.lista.map(x => `<tr><td>${WMS.esc(x.codigo)} — ${WMS.esc(x.nombre)}</td><td>${WMS.esc(this._agotObsTexto(x.producto_id, d.fecha))}</td><td style="text-align:center">${x.sucs.size}</td></tr>`).join('')}
       </tbody></table></body></html>`);
     w.document.close(); w.focus(); w.print();
   },
@@ -6904,7 +6946,7 @@ WMS_MODULES.picking = {
     const fin = f.fin || WMS.getToday();
     const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')) || '';
     const base  = window.API_BASE || '/WMS_FENIX/public/api';
-    const url   = `${base}/picking/agotados?fecha_inicio=${ini}&fecha_fin=${fin}&sucursal_entrega=${encodeURIComponent(f.sucursal||'')}&referencia=${encodeURIComponent(f.referencia||'')}&incluir_conciliacion=${f.incluirConciliacion ? '1' : '0'}&export=csv&_token=${encodeURIComponent(token)}`;
+    const url   = `${base}/picking/agotados?fecha_inicio=${ini}&fecha_fin=${fin}&sucursal_entrega=${encodeURIComponent(f.sucursal||'')}&referencia=${encodeURIComponent(f.referencia||'')}&incluir_conciliacion=${f.incluirConciliacion ? '1' : '0'}&excluir_archivados=1&export=csv&_token=${encodeURIComponent(token)}`;
     const a = document.createElement('a');
     a.href = url;
     a.download = `agotados_${ini}_${fin}.csv`;

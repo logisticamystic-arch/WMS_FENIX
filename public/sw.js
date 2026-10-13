@@ -1,10 +1,11 @@
 /**
  * Service Worker — WMS Fénix
  * v22: Network-First for HTML/JS to prevent stale cache.
- *      Cache-First only for images/fonts/css.
+ * v24 (2026-10-12): CSS también Network-First — mobile.css (sin ?v) quedaba
+ *      congelado en cada celular y el tema bee nunca llegaba. Cache-First solo imágenes/fuentes.
  */
 
-const CACHE_NAME = 'prowms-v23';
+const CACHE_NAME = 'prowms-v24';
 const BASE = '/WMS_FENIX/public';
 
 // ── Instalación: precachear solo assets estáticos ───────────────────────────
@@ -38,16 +39,18 @@ self.addEventListener('fetch', event => {
     if (url.pathname.includes('/api/')) return;
     if (url.origin !== self.location.origin) return;
 
-    // HTML and JS files → Network First (always get latest, cache as backup)
+    // HTML, JS y CSS → Network First (always get latest, cache as backup)
     if (event.request.destination === 'document' ||
         event.request.destination === 'script' ||
+        event.request.destination === 'style' ||
         url.pathname.endsWith('.html') ||
+        url.pathname.endsWith('.css') ||
         url.pathname.endsWith('.js')) {
         event.respondWith(networkFirst(event.request));
         return;
     }
 
-    // Images, CSS, fonts → Cache First (immutable assets)
+    // Images, fonts → Cache First (immutable assets)
     event.respondWith(cacheFirst(event.request));
 });
 

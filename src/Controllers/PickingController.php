@@ -10500,7 +10500,9 @@ class PickingController extends BaseController
             ->where('ao.empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('ao.sucursal_id', $this->getEffectiveSucursalId($user, $r))
             ->whereBetween('ao.fecha', [$ini, $fin])
-            ->get(['ao.producto_id', Capsule::raw("to_char(ao.fecha, 'YYYY-MM-DD') as fecha"), 'ao.observacion', 'pe.nombre as usuario', 'ao.updated_at']);
+            ->leftJoin('personal as pa', 'pa.id', '=', 'ao.archivado_por')
+            ->get(['ao.producto_id', Capsule::raw("to_char(ao.fecha, 'YYYY-MM-DD') as fecha"), 'ao.observacion', 'pe.nombre as usuario', 'ao.updated_at',
+                   'ao.archivado_at', 'pa.nombre as archivado_por']);
         return $this->ok($res, $rows->keyBy(fn($o) => $o->producto_id . '|' . $o->fecha));
     }
 
@@ -10531,6 +10533,35 @@ class PickingController extends BaseController
         return $this->ok($res, ['producto_id' => $prod, 'fecha' => $fecha, 'observacion' => $obs, 'usuario' => $user->nombre ?? null], 'Observación guardada');
     }
 
+    // PUT /picking/agotados/archivar {producto_id, fecha, archivar: bool} (2026-10-12)
+    // Archiva el agotado de una referencia en un día para que "Agotados del día"
+    // muestre solo el agotado real. Exige justificación guardada.
+    public function archivarAgotado(Request $r, Response $res): Response
+    {
+        $user  = $r->getAttribute('user');
+        $b     = $r->getParsedBody() ?? [];
+        $prod  = (int)($b['producto_id'] ?? 0);
+        $fecha = (string)($b['fecha'] ?? '');
+        $archivar = filter_var($b['archivar'] ?? true, FILTER_VALIDATE_BOOLEAN);
+        if (!$prod || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) return $this->error($res, 'Referencia y fecha son obligatorias', 422);
+        $q = Capsule::table('agotados_observaciones')->where([
+            'empresa_id'  => $this->getEffectiveEmpresaId($user, $r),
+            'sucursal_id' => $this->getEffectiveSucursalId($user, $r),
+            'producto_id' => $prod,
+            'fecha'       => $fecha,
+        ]);
+        $fila = (clone $q)->first();
+        if ($archivar && (!$fila || trim((string)$fila->observacion) === '')) {
+            return $this->error($res, 'Escriba la justificación antes de archivar el agotado', 422);
+        }
+        if (!$fila) return $this->ok($res, null, 'Sin cambios');
+        $q->update($archivar ? ['archivado_at' => date('Y-m-d H:i:s'), 'archivado_por' => $user->id]
+                             : ['archivado_at' => null, 'archivado_por' => null]);
+        $this->audit($user, 'picking', $archivar ? 'archivar_agotado' : 'desarchivar_agotado', 'agotados_observaciones', (int)$fila->id,
+            null, ['producto_id' => $prod, 'fecha' => $fecha], ($archivar ? 'Agotado archivado' : 'Agotado desarchivado') . " — producto {$prod} del {$fecha}");
+        return $this->ok($res, null, $archivar ? 'Agotado archivado' : 'Agotado restaurado');
+    }
+
     public function getAgotados(Request $r, Response $res): Response
     {
         $user      = $r->getAttribute('user');
@@ -10552,8 +10583,11 @@ class PickingController extends BaseController
         // las filas de picking_faltantes), así que sin excluirla el reporte queda
         // inflado con faltantes que nunca existieron para el cliente.
         $incluirConciliacion = ($params['incluir_conciliacion'] ?? '') === '1';
-
-        $like = $this->isPg() ? 'ILIKE' : 'LIKE';
+        // 2026-10-12: los agotados archivados (justificados, no son agotado real) no
+        // cuentan en consolidado/gráficos/CSV. "Agotados del día" sí los pide para
+        // listarlos en su sección de Archivados.
+        $excluirArchivados = ($params['excluir_archivados'] ?? '') === '1';
+        $sucursalId        = $this->getEffectiveSucursalId($user, $r);
 
         $query = Capsule::table('picking_faltantes as pf')
             ->join('productos as pr',     'pr.id',  '=', 'pf.producto_id')
@@ -10562,6 +10596,12 @@ class PickingController extends BaseController
             ->where(Capsule::raw("DATE(pf.created_at)"), '>=', $fIni)
             ->where(Capsule::raw("DATE(pf.created_at)"), '<=', $fFin)
             ->when(!$incluirConciliacion, fn($q) => $q->where('pf.causa', '!=', 'Separado sin Ubicación/Inventario'))
+            ->when($excluirArchivados, fn($q) => $q->whereNotExists(fn($s) => $s->from('agotados_observaciones as ao')
+                ->whereColumn('ao.producto_id', 'pf.producto_id')
+                ->whereColumn('ao.empresa_id', 'pf.empresa_id')
+                ->where('ao.sucursal_id', $sucursalId)
+                ->whereRaw('ao.fecha = DATE(pf.created_at)')
+                ->whereNotNull('ao.archivado_at')))
             ->select(
                 'pf.id',
                 'pf.created_at             as fecha',
@@ -10586,13 +10626,18 @@ class PickingController extends BaseController
             $query->where('op.sucursal_entrega', $sucFiltro);
         }
 
-        if (strlen($refQ) >= 2) {
-            $term = '%' . $refQ . '%';
-            $query->where(function ($q) use ($like, $term) {
-                $q->where('pr.nombre',           $like, $term)
-                  ->orWhere('pr.codigo_interno',  $like, $term);
-            });
-        }
+        // Búsqueda dinámica: cada palabra debe estar en el código o el nombre, en
+        // cualquier orden, sin tildes ni mayúsculas (aplica también a excedentes).
+        $sinTilde  = fn($col) => "TRANSLATE(LOWER($col), 'áéíóúüñ', 'aeiouun')";
+        $palabras  = preg_split('/\s+/', strtr(mb_strtolower($refQ), ['á'=>'a','é'=>'e','í'=>'i','ó'=>'o','ú'=>'u','ü'=>'u','ñ'=>'n']), -1, PREG_SPLIT_NO_EMPTY);
+        $filtroRef = function ($query) use ($palabras, $sinTilde) {
+            foreach ($palabras as $w) {
+                $term = '%' . addcslashes($w, '%_\\') . '%';
+                $query->where(fn($q) => $q->whereRaw($sinTilde('pr.nombre') . ' LIKE ?', [$term])
+                                          ->orWhereRaw($sinTilde('pr.codigo_interno') . ' LIKE ?', [$term]));
+            }
+        };
+        $filtroRef($query);
 
         if ($export) {
             $rows = $query->get();
@@ -10748,13 +10793,7 @@ class PickingController extends BaseController
             $excedentesQuery->where('op.sucursal_entrega', $sucFiltro);
         }
 
-        if (strlen($refQ) >= 2) {
-            $term = '%' . $refQ . '%';
-            $excedentesQuery->where(function ($q) use ($like, $term) {
-                $q->where('pr.nombre',          $like, $term)
-                  ->orWhere('pr.codigo_interno', $like, $term);
-            });
-        }
+        $filtroRef($excedentesQuery);
 
         // Blindaje 2026-08-08: el factor real de conversión cajas→unidades es
         // factor_udm cuando el producto lo tiene (se vende por contenido/peso);
