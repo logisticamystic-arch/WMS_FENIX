@@ -86,6 +86,17 @@ class NotificacionesController extends BaseController
             'recepcion'  => $run(fn() => DB::table('recepciones')
                                  ->where('empresa_id', $empresaId)->where('estado', 'Borrador')->count()),
 
+            // Calidad: recepciones en Borrador que todavía no tienen registro de calidad
+            'calidad'    => $run(fn() => DB::table('recepciones as r')
+                                 ->where('r.empresa_id', $empresaId)->where('r.estado', 'Borrador')
+                                 ->whereNotExists(function ($q) {
+                                     $q->select(DB::raw(1))->from('recepcion_calidad as rc')
+                                       ->whereColumn('rc.recepcion_id', 'r.id');
+                                 })->count()),
+
+            'devoluciones' => $run(fn() => DB::table('devoluciones')
+                                 ->where('empresa_id', $empresaId)->where('estado', 'PendienteAprobacion')->count()),
+
             'inventario' => $run(fn() => DB::table('sesiones_inventario')
                                  ->where('empresa_id', $empresaId)
                                  ->whereIn('estado', ['Borrador', 'EnCurso'])->count()),

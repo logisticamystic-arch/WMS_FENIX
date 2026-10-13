@@ -262,8 +262,7 @@ WMS_MODULES.programacion = {
       (descansosPorPersona[pid] = descansosPorPersona[pid] || []).push(dia);
     }
 
-    const nombresDow = ['L','M','X','J','V','S','D'];
-    const dowDe = (dia) => nombresDow[(new Date(m.anio, m.mes-1, dia).getDay()+6)%7];
+    const dowDe = (dia) => this._nombresDiaLargo[this._dowDe(dia)];
 
     const filas = Object.entries(descansosPorPersona)
       .map(([pid, dias]) => {
@@ -321,7 +320,15 @@ WMS_MODULES.programacion = {
     el.innerHTML = html;
   },
 
-  // ── Agregar descanso (persona + día(s)) ─────────────────────────────────
+  // ── Nombres de día en español ───────────────────────────────────────────
+  _nombresDiaCorto: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
+  _nombresDiaLargo: ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'],
+  _dowDe(dia) {
+    const m = this._matriz;
+    return (new Date(m.anio, m.mes - 1, dia).getDay() + 6) % 7;
+  },
+
+  // ── Agregar descanso (persona + día(s)) — calendario Lun-Dom ────────────
   agregarDescanso(pidPrefijado) {
     const m = this._matriz;
     const filaDescanso = m.filas.find(f => f.codigo === 'DESCANSO');
@@ -329,9 +336,10 @@ WMS_MODULES.programacion = {
     if (!m.personal.length) { WMS.toast('error', 'No hay personal activo.'); return; }
 
     const diasEnMes = new Date(m.anio, m.mes, 0).getDate();
-    const nombresDow = ['L','M','X','J','V','S','D'];
+    const dowPrimero = this._dowDe(1); // 0=Lun..6=Dom
+    const festivos = m.festivos || {};
 
-    // Descansos actuales (para pre-check de días si ya hay registros)
+    // Descansos actuales de esta persona (para pre-check)
     const yaDescansa = new Set();
     for (const key in m.celdas) {
       const [dia, filaId] = key.split('-').map(Number);
@@ -341,12 +349,23 @@ WMS_MODULES.programacion = {
     }
 
     const persOpts = m.personal.map(p => `<option value="${p.id}" ${pidPrefijado==p.id?'selected':''}>${WMS.esc(p.nombre)}</option>`).join('');
-    let diasHtml = '';
+
+    // Grid tipo calendario (6 filas máx × 7 columnas)
+    let cells = '';
+    for (let i = 0; i < dowPrimero; i++) cells += `<div></div>`; // padding inicial
     for (let d = 1; d <= diasEnMes; d++) {
-      const dow = nombresDow[(new Date(m.anio, m.mes-1, d).getDay()+6)%7];
+      const fs = `${m.anio}-${String(m.mes).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const festivo = festivos[fs];
+      const dow = this._dowDe(d);
+      const esFinde = dow === 5 || dow === 6;
+      const bg = festivo ? '#fee2e2' : (esFinde ? '#f1f5f9' : '#fff');
       const checked = yaDescansa.has(d) ? 'checked' : '';
-      diasHtml += `<label style="display:inline-flex;align-items:center;gap:3px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;background:#fff;font-size:.72rem;cursor:pointer;">
-        <input type="checkbox" data-dia="${d}" ${checked}> ${dow} ${d}
+      cells += `<label title="${festivo ? WMS.esc(festivo) : ''}"
+        style="position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 4px;border:1px solid #e2e8f0;border-radius:6px;background:${bg};cursor:pointer;font-size:.8rem;min-height:52px;transition:all .1s;"
+        onmouseover="this.style.borderColor='#2b5fc7'" onmouseout="this.style.borderColor='#e2e8f0'">
+        <input type="checkbox" data-dia="${d}" ${checked} style="position:absolute;top:4px;right:4px;cursor:pointer;">
+        <div style="font-weight:700;font-size:.95rem;">${d}</div>
+        ${festivo ? `<div style="font-size:.55rem;color:#dc2626;font-weight:700;line-height:1;">FESTIVO</div>` : ''}
       </label>`;
     }
 
@@ -357,12 +376,18 @@ WMS_MODULES.programacion = {
           <div><label style="display:block;font-weight:600;margin-bottom:4px;">Personal</label>
             <select id="sw-pid" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.9rem;background:#fff;" ${pidPrefijado?'disabled':''}>${persOpts}</select></div>
           <div>
-            <label style="display:block;font-weight:600;margin-bottom:4px;">Días que descansa</label>
-            <div style="display:flex;flex-wrap:wrap;gap:4px;max-height:260px;overflow:auto;padding:4px;border:1px solid #e2e8f0;border-radius:5px;">${diasHtml}</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <label style="font-weight:600;">Días que descansa</label>
+              <small style="color:#64748b;">${m.anio}-${String(m.mes).padStart(2,'0')}</small>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:4px;">
+              ${this._nombresDiaCorto.map(n => `<div style="text-align:center;font-weight:700;font-size:.72rem;color:#64748b;padding:4px 0;">${n}</div>`).join('')}
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;">${cells}</div>
           </div>
-          <small style="color:#64748b;">Marca uno o más días. Los ya marcados se mantienen; destildarlos los quita.</small>
+          <small style="color:#64748b;">Marca uno o más días. Los días ya marcados se mantienen; destildarlos los quita.</small>
         </div>`,
-      width: 560,
+      width: 620,
       showCancelButton: true,
       confirmButtonText: 'Guardar',
       preConfirm: () => {
@@ -373,6 +398,16 @@ WMS_MODULES.programacion = {
         const dias = chks.filter(c => c.checked).map(c => Number(c.dataset.dia));
         const quitar = chks.filter(c => !c.checked && yaDescansa.has(Number(c.dataset.dia))).map(c => Number(c.dataset.dia));
         return { pid, dias, quitar };
+      },
+      didOpen: () => {
+        // Click en la celda = toggle del checkbox (más amplio y natural)
+        document.querySelectorAll('label[title]').forEach(l => {
+          l.addEventListener('click', (e) => {
+            if (e.target.tagName === 'INPUT') return;
+            const chk = l.querySelector('input[type=checkbox]');
+            if (chk) { chk.checked = !chk.checked; e.preventDefault(); }
+          });
+        });
       }
     }).then(async (r) => {
       if (!r.isConfirmed || !r.value) return;
