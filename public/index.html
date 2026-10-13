@@ -299,6 +299,10 @@
             <i class="fa-solid fa-barcode"></i><span>Rotulos</span>
           </button>
 
+          <button class="nm-item" data-module="programacion" onclick="WMS.nav('programacion')">
+            <i class="fa-solid fa-calendar-days"></i><span>Programación</span>
+          </button>
+
           <button class="nm-item" data-module="reportes" onclick="WMS.nav('reportes')">
             <i class="fa-solid fa-chart-column"></i><span>Reportes</span>
           </button>
@@ -1743,6 +1747,7 @@
         rotulos:        'productos',
         aprobaciones:   'todas',
         tms:            'resumen',
+        programacion:   'horario',
       },
 
       // ── Navegación por módulos ────────────────────────────
@@ -1786,6 +1791,7 @@
           devoluciones:  'assets/js/desktop/devoluciones.js',
           aprobaciones:  'assets/js/desktop/aprobaciones.js',
           tms:           'assets/js/desktop/tms-dashboard.js',
+          programacion:  'assets/js/desktop/programacion.js',
           'consulta-rapida': 'assets/js/desktop/consulta-rapida.js',
           'trazabilidad':    'assets/js/desktop/trazabilidad.js',
           'chat-ia':         'assets/js/desktop/chat-ia.js',
@@ -1816,7 +1822,7 @@
         const curEl   = document.getElementById('bc-current');
         const backBtn = document.getElementById('btn-back-breadcrumb');
 
-        const labels = { inicio:'Inicio', maestro:'Maestros', recepcion:'Recepción', almacenamiento:'Almacenamiento', picking:'Picking', despacho:'Despacho', preoperacional:'Preoperacional', calidad:'Calidad', inventario:'Inventario', reportes:'Reportes', logistica:'Logística Pro', rotacion:'Rotación ML', rotulos:'Rótulos', devoluciones:'Devoluciones', aprobaciones:'Aprobaciones', 'consulta-rapida':'Consulta Rápida', trazabilidad:'Trazabilidad', 'chat-ia':'FENIX IA', tms:'TMS Entregas' };
+        const labels = { inicio:'Inicio', maestro:'Maestros', recepcion:'Recepción', almacenamiento:'Almacenamiento', picking:'Picking', despacho:'Despacho', preoperacional:'Preoperacional', calidad:'Calidad', inventario:'Inventario', reportes:'Reportes', logistica:'Logística Pro', rotacion:'Rotación ML', rotulos:'Rótulos', devoluciones:'Devoluciones', aprobaciones:'Aprobaciones', 'consulta-rapida':'Consulta Rápida', trazabilidad:'Trazabilidad', 'chat-ia':'FENIX IA', tms:'TMS Entregas', programacion:'Programación' };
         modEl.textContent = labels[mod] || mod.toUpperCase();
 
         if (sub) {
@@ -2199,6 +2205,16 @@
                 { icon: 'fa-boxes-stacked',  label: 'Consultar Picking',   action: "WMS_MODULES['chat-ia']?.load('picking')" },
                 { icon: 'fa-clipboard-list', label: 'Consultar Inventario',action: "WMS_MODULES['chat-ia']?.load('inventario')" },
                 { icon: 'fa-truck-fast',     label: 'Consultar Despacho',  action: "WMS_MODULES['chat-ia']?.load('despacho')" },
+              ]
+            },
+          ],
+          programacion: [
+            {
+              section: 'PROGRAMACIÓN', items: [
+                { icon: 'fa-calendar-days', label: 'Horario Mensual', action: "WMS.nav('programacion','horario')" },
+                { icon: 'fa-users',         label: 'Personal',        action: "WMS.nav('programacion','personal')" },
+                { icon: 'fa-tags',          label: 'Tareas (ROL)',    action: "WMS.nav('programacion','tareas')" },
+                { icon: 'fa-list-ol',       label: 'Turnos / Rutas',  action: "WMS.nav('programacion','filas')" },
               ]
             },
           ],

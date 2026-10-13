@@ -698,6 +698,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
         $group->get('/agotados',                    [\App\Controllers\PickingController::class, 'getAgotados']);
         $group->get('/agotados/observaciones',      [\App\Controllers\PickingController::class, 'getAgotadosObservaciones']);
         $group->put('/agotados/observaciones',      [\App\Controllers\PickingController::class, 'guardarAgotadoObservacion']);
+        $group->put('/agotados/archivar',           [\App\Controllers\PickingController::class, 'archivarAgotado']);
         $group->post('/asignar-consolidado', [\App\Controllers\PickingController::class, 'asignarConsolidado']);
         $group->post('/assign', [\App\Controllers\PickingController::class, 'assignLines']);
         $group->post('/transfer', [\App\Controllers\PickingController::class, 'transferTasks']);
@@ -1324,6 +1325,18 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/wave/auto-generar',                  [\App\Controllers\WaveController::class, 'autoGenerar']);
     $group->get('/wave/kpis/resumen',                   [\App\Controllers\WaveController::class, 'kpis']);
     $group->get('/wave/export/csv',                     [\App\Controllers\WaveController::class, 'export']);
+
+    // ── PROGRAMACIÓN DE PERSONAL (horarios mensuales — migración 168) ─────
+    $group->get   ('/programacion/filas',           [\App\Controllers\ProgramacionController::class, 'filasIndex']);
+    $group->post  ('/programacion/filas',           [\App\Controllers\ProgramacionController::class, 'filasSave']);
+    $group->delete('/programacion/filas/{id}',      [\App\Controllers\ProgramacionController::class, 'filasDelete']);
+    $group->get   ('/programacion/tareas',          [\App\Controllers\ProgramacionController::class, 'tareasIndex']);
+    $group->post  ('/programacion/tareas',          [\App\Controllers\ProgramacionController::class, 'tareasSave']);
+    $group->delete('/programacion/tareas/{id}',     [\App\Controllers\ProgramacionController::class, 'tareasDelete']);
+    $group->get   ('/programacion/personal',        [\App\Controllers\ProgramacionController::class, 'personalIndex']);
+    $group->get   ('/programacion/festivos',        [\App\Controllers\ProgramacionController::class, 'festivos']);
+    $group->get   ('/programacion/matriz',          [\App\Controllers\ProgramacionController::class, 'matriz']);
+    $group->post  ('/programacion/matriz',          [\App\Controllers\ProgramacionController::class, 'guardarMatriz']);
 
 })->add(new \App\Middleware\TenantMiddleware())
   ->add(new \App\Middleware\JwtMiddleware());
