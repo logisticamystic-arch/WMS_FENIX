@@ -212,7 +212,7 @@ WMS_MODULES.programacion = {
         else if (esFinde(d)) classes.push('weekend');
         if (fs === hoyStr) classes.push('today');
 
-        const asigs = asigsPorDia[fs] || [];
+        const asigs = this._ordenarAsigs(asigsPorDia[fs] || []);
         const asigsHtml = asigs.map(a => this.renderAsigChip(a)).join('');
         const descansoChips = inMonth
           ? (descansosPorDia[d.getDate()] || [])
@@ -351,6 +351,26 @@ WMS_MODULES.programacion = {
   _dowDe(dia) {
     const m = this._matriz;
     return (new Date(m.anio, m.mes - 1, dia).getDay() + 6) % 7;
+  },
+
+  // Orden fijo de los chips dentro de una celda del cronograma, por pedido
+  // explícito 2026-10-12: primero RUTAs (por su orden configurado), después
+  // los demás por código de rol en este orden: REC, INV, ASE, LAV, DVO, ORG.
+  _ordenRol: { REC: 1, INV: 2, ASE: 3, LAV: 4, DVO: 5, ORG: 6 },
+  _ordenarAsigs(asigs) {
+    const m = this._matriz;
+    const ord = this._ordenRol;
+    return asigs.slice().sort((a, b) => {
+      const fa = m.filas.find(f => f.id == a.filaId);
+      const fb = m.filas.find(f => f.id == b.filaId);
+      const aRuta = fa && fa.codigo.startsWith('RUTA');
+      const bRuta = fb && fb.codigo.startsWith('RUTA');
+      if (aRuta !== bRuta) return aRuta ? -1 : 1;
+      if (aRuta && bRuta) return (fa.orden || 0) - (fb.orden || 0);
+      const ca = (m.tareas.find(t => t.id == a.tarea_id) || {}).codigo;
+      const cb = (m.tareas.find(t => t.id == b.tarea_id) || {}).codigo;
+      return (ord[ca] || 99) - (ord[cb] || 99);
+    });
   },
 
   // "ANDRES VILLADA ESTEBAN DIAZ" → "Andres V."  (primer nombre + inicial del
