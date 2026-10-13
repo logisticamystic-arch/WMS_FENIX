@@ -49,6 +49,7 @@ WMS_MODULES.programacion = {
           <span style="margin-left:auto;font-size:.8rem;color:#64748b;">
             <span style="display:inline-block;width:12px;height:12px;background:#fee2e2;border:1px solid #fca5a5;vertical-align:middle;margin-right:4px;"></span>Festivo
             <span style="display:inline-block;width:12px;height:12px;background:#f1f5f9;border:1px solid #cbd5e1;vertical-align:middle;margin-left:12px;margin-right:4px;"></span>Fin de semana
+            <span style="margin-left:12px;color:#334155;"><i class="fa-solid fa-arrows-up-down-left-right"></i> Arrastra para mover · <kbd style="background:#f1f5f9;padding:0 4px;border:1px solid #cbd5e1;border-radius:3px;font-size:.72rem;">Ctrl</kbd>+arrastrar para copiar</span>
           </span>
         </div>
         <div style="display:grid;grid-template-columns:1fr 280px;gap:12px;align-items:start;">
@@ -61,7 +62,7 @@ WMS_MODULES.programacion = {
         .prog-vtab:last-child{border-right:none;}
         .prog-vtab.active{background:#1e293b;color:#fff;}
         .prog-cal-head{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));background:#1e293b;color:#fff;font-weight:700;font-size:.78rem;text-align:center;}
-        .prog-cal-head > div{padding:8px 4px;border-right:1px solid #334155;container-type:inline-size;overflow:hidden;}
+        .prog-cal-head > div{padding:8px 4px;border-right:1px solid #334155;container-type:inline-size;overflow:hidden;white-space:nowrap;min-width:0;}
         .prog-cal-head > div:last-child{border-right:none;}
         .prog-cal-head .dow-long{display:none;}
         .prog-cal-head .dow-short{display:inline;}
@@ -69,8 +70,9 @@ WMS_MODULES.programacion = {
           .prog-cal-head .dow-long{display:inline;}
           .prog-cal-head .dow-short{display:none;}
         }
-        .prog-cal-week{display:grid;grid-template-columns:repeat(7,1fr);border-top:1px solid #e2e8f0;}
-        .prog-cal-cell{min-height:120px;padding:6px;border-right:1px solid #e2e8f0;background:#fff;position:relative;display:flex;flex-direction:column;}
+        .prog-cal-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-top:1px solid #e2e8f0;}
+        .prog-cal-cell{min-width:0;overflow:hidden;min-height:120px;padding:6px;border-right:1px solid #e2e8f0;background:#fff;position:relative;display:flex;flex-direction:column;}
+        .prog-cal-cell.drag-over{outline:2px dashed #2b5fc7;outline-offset:-3px;background:#eff6ff;}
         .prog-cal-cell:last-child{border-right:none;}
         .prog-cal-cell.other{background:#fafbfc;color:#94a3b8;}
         .prog-cal-cell.weekend{background:#f8fafc;}
@@ -82,8 +84,10 @@ WMS_MODULES.programacion = {
         .prog-cal-holiday-tag{font-size:.6rem;background:#dc2626;color:#fff;padding:1px 5px;border-radius:3px;font-weight:600;}
         .prog-cal-add{position:absolute;top:4px;right:4px;width:18px;height:18px;border-radius:50%;background:#2b5fc7;color:#fff;border:none;font-size:.65rem;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:.6;}
         .prog-cal-add:hover{opacity:1;}
-        .prog-asig{font-size:.68rem;padding:2px 4px;margin-bottom:2px;border-radius:3px;cursor:pointer;display:flex;gap:4px;align-items:center;background:#f1f5f9;border:1px solid #e2e8f0;}
+        .prog-asig{font-size:.68rem;padding:2px 4px;margin-bottom:2px;border-radius:3px;cursor:grab;display:flex;gap:4px;align-items:center;background:#f1f5f9;border:1px solid #e2e8f0;min-width:0;}
         .prog-asig:hover{background:#e0e7ff;}
+        .prog-asig:active{cursor:grabbing;}
+        .prog-asig.dragging{opacity:.4;}
         .prog-asig .turno{font-weight:700;color:#1e293b;}
         .prog-asig .rol{background:#fff;padding:0 4px;border-radius:2px;font-weight:600;}
         .prog-asig .pers{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
@@ -217,13 +221,18 @@ WMS_MODULES.programacion = {
               .join('')
           : '';
 
-        html += `<div class="${classes.join(' ')}" data-fecha="${fs}">
+        const dropHandlers = inMonth
+          ? `ondragover="WMS_MODULES.programacion.onDragOver(event)"
+             ondragleave="this.classList.remove('drag-over')"
+             ondrop="WMS_MODULES.programacion.onDrop(event,'${fs}')"`
+          : '';
+        html += `<div class="${classes.join(' ')}" data-fecha="${fs}" ${dropHandlers}>
           <div class="prog-cal-date">
             <span class="num">${d.getDate()}</span>
             ${festivo ? `<span class="prog-cal-holiday-tag" title="${WMS.esc(festivo)}">FESTIVO</span>` : ''}
           </div>
           ${inMonth ? `<button class="prog-cal-add" title="Agregar asignación" onclick="WMS_MODULES.programacion.abrirCelda('${fs}')">+</button>` : ''}
-          <div style="flex:1;overflow:auto;">${asigsHtml}${descansoChips}</div>
+          <div style="flex:1;overflow:auto;min-width:0;">${asigsHtml}${descansoChips}</div>
         </div>`;
       }
       html += `</div>`;
@@ -246,7 +255,12 @@ WMS_MODULES.programacion = {
     const pers  = m.personal.find(p => p.id == a.personal_id);
     const key = `${a.dia}-${a.filaId}-${a.slot}`;
     const bg = tarea ? tarea.color : '#f1f5f9';
-    return `<div class="prog-asig" style="background:${bg};" onclick="WMS_MODULES.programacion.editarAsig('${key}')">
+    return `<div class="prog-asig" style="background:${bg};" draggable="true"
+      data-key="${key}"
+      ondragstart="WMS_MODULES.programacion.onDragStart(event,'${key}')"
+      ondragend="WMS_MODULES.programacion.onDragEnd(event)"
+      onclick="WMS_MODULES.programacion.editarAsig('${key}')"
+      title="Arrastra para mover · Ctrl+arrastra para copiar">
       <span class="turno">${fila ? WMS.esc(fila.codigo.replace('TURNO-','T')) : '?'}</span>
       ${tarea ? `<span class="rol">${WMS.esc(tarea.codigo)}</span>` : ''}
       <span class="pers" title="${pers ? WMS.esc(pers.nombre) : ''}">${pers ? WMS.esc(this._nombreCorto(pers.nombre)) : '<i style="color:#dc2626;">Sin asignar</i>'}</span>
@@ -591,6 +605,72 @@ WMS_MODULES.programacion = {
 
       await this.enviarCelda({ dia: a.dia, fila_id: v.fila_id, slot, personal_id: v.personal_id, tarea_id: v.tarea_id, descansa: false });
     });
+  },
+
+  // ── Drag & Drop: mover/copiar asignación entre días ────────────────────
+  onDragStart(ev, key) {
+    ev.dataTransfer.setData('text/plain', key);
+    ev.dataTransfer.effectAllowed = 'copyMove';
+    ev.currentTarget.classList.add('dragging');
+  },
+  onDragEnd(ev) {
+    ev.currentTarget.classList.remove('dragging');
+    document.querySelectorAll('.prog-cal-cell.drag-over').forEach(c => c.classList.remove('drag-over'));
+  },
+  onDragOver(ev) {
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = ev.ctrlKey ? 'copy' : 'move';
+    ev.currentTarget.classList.add('drag-over');
+  },
+  async onDrop(ev, fechaDestino) {
+    ev.preventDefault();
+    ev.currentTarget.classList.remove('drag-over');
+    const keyOrigen = ev.dataTransfer.getData('text/plain');
+    if (!keyOrigen) return;
+    const copiar = ev.ctrlKey;
+    const [diaOrig, filaId, slotOrig] = keyOrigen.split('-').map(Number);
+    const diaDest = Number(fechaDestino.split('-')[2]);
+    if (diaOrig === diaDest) return; // misma celda = sin cambios
+
+    const m = this._matriz;
+    const cell = m.celdas[keyOrigen];
+    if (!cell) return;
+    const fila = m.filas.find(f => f.id === filaId);
+    if (!fila) return;
+
+    // Buscar slot libre en el día destino (rutas respetan slots, turnos no)
+    const esRuta = fila.codigo.startsWith('RUTA');
+    const maxBuscar = esRuta ? (fila.slots || 1) : 9999;
+    let slotDest = -1;
+    for (let s = 0; s < maxBuscar; s++) {
+      if (!m.celdas[`${diaDest}-${filaId}-${s}`]) { slotDest = s; break; }
+    }
+    if (slotDest < 0) {
+      WMS.toast('warning', `${fila.codigo} ya está programado el día ${diaDest}.`);
+      return;
+    }
+
+    const [anio, mes] = this._mes.split('-').map(Number);
+    const celdas = [{
+      dia: diaDest, fila_id: filaId, slot: slotDest,
+      personal_id: cell.personal_id, tarea_id: cell.tarea_id, descansa: false,
+    }];
+    if (!copiar) {
+      celdas.push({
+        dia: diaOrig, fila_id: filaId, slot: slotOrig,
+        personal_id: null, tarea_id: null, descansa: false,
+      });
+    }
+
+    WMS.spinner();
+    try {
+      await API.post('/programacion/matriz', { anio, mes, celdas });
+      await this.cargarMatriz();
+      WMS.toast('success', copiar ? `Copiado al día ${diaDest}` : `Movido al día ${diaDest}`);
+    } catch (e) {
+      WMS.toast('error', 'Error: ' + (e.message || e));
+    }
+    WMS.spinnerHide();
   },
 
   async enviarCelda(celda) {
