@@ -353,6 +353,23 @@ WMS_MODULES.programacion = {
     return (new Date(m.anio, m.mes - 1, dia).getDay() + 6) % 7;
   },
 
+  // Devuelve la fila donde esa persona ya está programada el día dado, o null
+  // si está libre. Permite excluir una celda (para edición). Usado para evitar
+  // que un mismo empleado quede dos veces el mismo día.
+  _personaOcupadaEnDia(dia, personaId, excluirKey = null) {
+    if (!personaId) return null;
+    const m = this._matriz;
+    for (const key in m.celdas) {
+      if (key === excluirKey) continue;
+      const [d, filaId] = key.split('-').map(Number);
+      if (d !== dia) continue;
+      if (m.celdas[key].personal_id == personaId) {
+        return m.filas.find(f => f.id === filaId) || { codigo: '?' };
+      }
+    }
+    return null;
+  },
+
   // Orden fijo de los chips dentro de una celda del cronograma, por pedido
   // explícito 2026-10-12: primero RUTAs (por su orden configurado), después
   // los demás por código de rol en este orden: REC, INV, ASE, LAV, DVO, ORG.
@@ -500,7 +517,14 @@ WMS_MODULES.programacion = {
       }
     }
     // Agregar: si ya existe (ya tiene descanso ese día), no duplicar; si no, primer slot libre
+    const bloqueados = [];
     for (const dia of diasAgregar) {
+      // Si la persona ya tiene turno/ruta ese día, no puede además descansar
+      const choque = this._personaOcupadaEnDia(dia, pid);
+      if (choque && choque.codigo !== 'DESCANSO') {
+        bloqueados.push(`${dia} (${choque.codigo})`);
+        continue;
+      }
       let yaEsta = false;
       let slotLibre = -1;
       for (let s = 0; s < 20; s++) {
@@ -511,6 +535,9 @@ WMS_MODULES.programacion = {
       if (yaEsta) continue;
       if (slotLibre < 0) { WMS.toast('warning', `Día ${dia}: límite de descansos alcanzado.`); continue; }
       celdas.push({ dia, fila_id: filaDescansoId, slot: slotLibre, personal_id: pid, tarea_id: null, descansa: true });
+    }
+    if (bloqueados.length) {
+      WMS.toast('warning', `No se marcó descanso en: ${bloqueados.join(', ')} — la persona ya está asignada.`);
     }
 
     if (!celdas.length) { WMS.toast('info', 'Sin cambios.'); return; }
@@ -603,6 +630,17 @@ WMS_MODULES.programacion = {
       const fila = m.filas.find(f => f.id === v.fila_id);
       if (!fila) { WMS.toast('error', 'Turno inválido.'); return; }
 
+      // Una persona no puede estar dos veces el mismo día
+      if (v.personal_id) {
+        const excl = esEdicion ? `${a.dia}-${a.filaId}-${a.slot}` : null;
+        const choque = this._personaOcupadaEnDia(a.dia, v.personal_id, excl);
+        if (choque) {
+          const pers = m.personal.find(p => p.id === v.personal_id);
+          WMS.toast('error', `${pers?.nombre || 'Esa persona'} ya está programada el día ${a.dia} en ${choque.codigo}.`);
+          return;
+        }
+      }
+
       let slot = a.slot;
       // Rutas: respetan slots configurados (son únicas).
       // Turnos/apoyo/otros: sin límite — buscamos el primer hueco disponible.
@@ -658,6 +696,17 @@ WMS_MODULES.programacion = {
     if (!cell) return;
     const fila = m.filas.find(f => f.id === filaId);
     if (!fila) return;
+
+    // La misma persona no puede estar dos veces el mismo día
+    if (cell.personal_id) {
+      const excl = copiar ? null : keyOrigen;
+      const choque = this._personaOcupadaEnDia(diaDest, cell.personal_id, excl);
+      if (choque) {
+        const pers = m.personal.find(p => p.id === cell.personal_id);
+        WMS.toast('error', `${pers?.nombre || 'Esa persona'} ya está programada el día ${diaDest} en ${choque.codigo}.`);
+        return;
+      }
+    }
 
     // Buscar slot libre en el día destino (rutas respetan slots, turnos no)
     const esRuta = fila.codigo.startsWith('RUTA');
