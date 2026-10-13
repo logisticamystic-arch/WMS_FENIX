@@ -90,7 +90,7 @@ WMS_MODULES.programacion = {
         .prog-asig.dragging{opacity:.4;}
         .prog-asig .turno{font-weight:700;color:#1e293b;}
         .prog-asig .rol{background:#fff;padding:0 4px;border-radius:2px;font-weight:600;}
-        .prog-asig .pers{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+        .prog-asig .pers{flex:1;white-space:nowrap;}
         .prog-desc-chip{display:inline-block;background:#e2e8f0;color:#334155;font-size:.65rem;padding:2px 5px;border-radius:3px;margin:2px 2px 0 0;}
       </style>
     `);
@@ -353,13 +353,14 @@ WMS_MODULES.programacion = {
     return (new Date(m.anio, m.mes - 1, dia).getDay() + 6) % 7;
   },
 
-  // "ANDRES VILLADA ESTEBAN DIAZ" → "Andres Villada" (primer nombre + primer apellido).
-  // Si el nombre tiene una sola palabra la devuelve tal cual, en Title Case.
+  // "ANDRES VILLADA ESTEBAN DIAZ" → "Andres V."  (primer nombre + inicial del
+  // primer apellido). Si solo hay una palabra, devuelve el nombre a secas.
   _nombreCorto(nombre) {
     if (!nombre) return '';
     const partes = String(nombre).trim().split(/\s+/);
-    const dos = partes.slice(0, 2).join(' ');
-    return dos.replace(/\w\S*/g, s => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase());
+    const titulo = (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+    if (partes.length === 1) return titulo(partes[0]);
+    return `${titulo(partes[0])} ${partes[1].charAt(0).toUpperCase()}.`;
   },
 
   // ── Agregar descanso (persona + día(s)) — calendario Lun-Dom ────────────
