@@ -46,6 +46,11 @@ WMS_MODULES.programacion = {
           <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.programacion.navegar(-1)" title="Anterior"><i class="fa-solid fa-chevron-left"></i></button>
           <span id="prog-rango" style="font-weight:600;min-width:180px;text-align:center;"></span>
           <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.programacion.navegar(1)" title="Siguiente"><i class="fa-solid fa-chevron-right"></i></button>
+          <label style="display:flex;align-items:center;gap:6px;margin-left:12px;font-size:.78rem;color:#334155;" title="Ancho de columnas">
+            <i class="fa-solid fa-arrows-left-right"></i>
+            <input type="range" id="prog-ancho" min="80" max="320" step="10" style="width:120px;">
+            <span id="prog-ancho-lbl" style="min-width:40px;color:#64748b;">140 px</span>
+          </label>
           <span style="margin-left:auto;font-size:.8rem;color:#64748b;">
             <span style="display:inline-block;width:12px;height:12px;background:#fee2e2;border:1px solid #fca5a5;vertical-align:middle;margin-right:4px;"></span>Festivo
             <span style="display:inline-block;width:12px;height:12px;background:#f1f5f9;border:1px solid #cbd5e1;vertical-align:middle;margin-left:12px;margin-right:4px;"></span>Fin de semana
@@ -66,7 +71,7 @@ WMS_MODULES.programacion = {
            más ancho (header + cualquier celda de ese día del mes) lo pide,
            pero nunca baja de 140px. Si crece más que el viewport, el wrapper
            hace scroll horizontal. */
-        .prog-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(140px,auto));}
+        .prog-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(var(--prog-cell-min,140px),auto));}
         .prog-cal-hdr{background:#1e293b;color:#fff;font-weight:700;font-size:.78rem;text-align:center;padding:8px 4px;border-right:1px solid #334155;container-type:inline-size;white-space:nowrap;position:sticky;top:0;z-index:2;}
         .prog-cal-hdr:nth-child(7){border-right:none;}
         .prog-cal-hdr .dow-long{display:none;}
@@ -103,6 +108,23 @@ WMS_MODULES.programacion = {
       this._offset = 0;
       this.cargarMatriz();
     });
+
+    // ── Ancho de celdas: slider con persistencia por usuario ──────────────
+    const anchoInput = document.getElementById('prog-ancho');
+    const anchoLbl   = document.getElementById('prog-ancho-lbl');
+    const guardado   = Number(localStorage.getItem('prog_cell_min')) || 140;
+    const aplicar = (px) => {
+      document.documentElement.style.setProperty('--prog-cell-min', px + 'px');
+      anchoLbl.textContent = px + ' px';
+      anchoInput.value = px;
+    };
+    aplicar(guardado);
+    anchoInput.addEventListener('input', (e) => {
+      const px = Number(e.target.value);
+      aplicar(px);
+      try { localStorage.setItem('prog_cell_min', String(px)); } catch (_) {}
+    });
+
     this.cargarMatriz();
   },
 
