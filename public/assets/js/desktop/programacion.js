@@ -326,17 +326,13 @@ WMS_MODULES.programacion = {
         Use el botón <b>+</b> para agregar.
       </div>`;
     } else {
-      html += '<div style="display:flex;flex-direction:column;gap:6px;">';
+      html += '<div style="display:flex;flex-direction:column;gap:4px;">';
       for (const f of filas) {
-        const chips = f.dias.map(d => `<span class="prog-desc-chip" title="${dowDe(d)} ${d}">${dowDe(d)} ${d}
-          <button onclick="WMS_MODULES.programacion.quitarDescanso(${f.pid},${d})" title="Quitar" style="background:none;border:none;color:#dc2626;cursor:pointer;padding:0 0 0 3px;font-weight:700;">×</button>
-        </span>`).join('');
-        html += `<div style="padding:8px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc;">
-          <div style="display:flex;justify-content:space-between;align-items:start;gap:4px;">
-            <div style="font-weight:600;font-size:.8rem;flex:1;" title="${WMS.esc(f.nombre)}">${WMS.esc(this._nombreCorto(f.nombre))}</div>
-            <button onclick="WMS_MODULES.programacion.agregarDescanso(${f.pid})" title="Agregar día" style="background:none;border:none;color:#2b5fc7;cursor:pointer;padding:0;"><i class="fa-solid fa-circle-plus"></i></button>
-          </div>
-          <div style="margin-top:4px;">${chips}</div>
+        const chips = f.dias.map(d => `<span class="prog-desc-chip" title="${dowDe(d)} ${d}" style="margin:0;">${dowDe(d)} ${d}<button onclick="WMS_MODULES.programacion.quitarDescanso(${f.pid},${d})" title="Quitar" style="background:none;border:none;color:#dc2626;cursor:pointer;padding:0 0 0 3px;font-weight:700;">×</button></span>`).join(' ');
+        html += `<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc;flex-wrap:wrap;">
+          <span style="font-weight:600;font-size:.78rem;" title="${WMS.esc(f.nombre)}">${WMS.esc(this._nombreCorto(f.nombre))}</span>
+          <span style="display:flex;flex-wrap:wrap;gap:3px;flex:1;">${chips}</span>
+          <button onclick="WMS_MODULES.programacion.agregarDescanso(${f.pid})" title="Agregar día" style="background:none;border:none;color:#2b5fc7;cursor:pointer;padding:0;font-size:.95rem;"><i class="fa-solid fa-circle-plus"></i></button>
         </div>`;
       }
       html += '</div>';
