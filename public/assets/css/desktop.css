@@ -483,6 +483,19 @@ button { cursor: pointer; font-family: var(--font); }
 .nm-item:hover i { color: #fff; }
 .nm-item.active i { color: #fff; }
 
+/* Badge de pendientes en los módulos del sidebar */
+.nm-item { position: relative; }
+.nm-item .nm-badge {
+  margin-left: auto;
+  background: #dc2626; color: #fff;
+  font-size: .68rem; font-weight: 700;
+  min-width: 20px; height: 18px; padding: 0 6px;
+  border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  line-height: 1;
+}
+.nm-item.active .nm-badge { background: #fff; color: var(--primary, #2b5fc7); }
+
 /* ── Submenú colapsable ── */
 .sidebar-sub {
   border-top: 1px solid rgba(255,255,255,.08);

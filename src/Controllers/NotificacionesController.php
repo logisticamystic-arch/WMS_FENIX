@@ -53,6 +53,53 @@ class NotificacionesController extends BaseController
     }
 
     /**
+     * GET /api/notificaciones/pendientes-por-modulo
+     *
+     * { modulo => N } para pintar badges en el menú lateral. Cada query corre
+     * aislada en try/catch: una tabla faltante o schema que cambió NO rompe
+     * los badges de los demás módulos.
+     */
+    public function pendientesPorModulo(Request $request, Response $response): Response
+    {
+        $user      = $request->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        if (!$empresaId) return $this->ok($response, []);
+
+        $run = function (callable $fn): int {
+            try { return (int)$fn(); }
+            catch (\Throwable $e) { error_log('badges: ' . $e->getMessage()); return 0; }
+        };
+
+        $data = [
+            'aprobaciones' => $run(fn() => DB::table('aprobaciones_vencimiento')
+                                 ->where('empresa_id', $empresaId)->where('estado', 'pendiente')->count())
+                           + $run(fn() => DB::table('ajuste_ubicacion')
+                                 ->where('empresa_id', $empresaId)->where('estado', 'Pendiente')->count()),
+
+            'picking'    => $run(fn() => DB::table('orden_pickings')
+                                 ->where('empresa_id', $empresaId)
+                                 ->whereIn('estado_certificacion', ['Pendiente', 'Parcial'])->count()),
+
+            'despacho'   => $run(fn() => DB::table('despachos')
+                                 ->where('empresa_id', $empresaId)->where('estado', 'Preparando')->count()),
+
+            'recepcion'  => $run(fn() => DB::table('recepciones')
+                                 ->where('empresa_id', $empresaId)->where('estado', 'Borrador')->count()),
+
+            'inventario' => $run(fn() => DB::table('sesiones_inventario')
+                                 ->where('empresa_id', $empresaId)
+                                 ->whereIn('estado', ['Borrador', 'EnCurso'])->count()),
+
+            // entregas_ruta no tiene columna "estado": TMS cuenta despachos que
+            // ya salieron pero aún no están Entregados (en ruta activa).
+            'tms'        => $run(fn() => DB::table('despachos')
+                                 ->where('empresa_id', $empresaId)->where('estado', 'Despachado')->count()),
+        ];
+
+        return $this->ok($response, $data);
+    }
+
+    /**
      * GET /api/notificaciones/badge
      * Solo retorna el contador de no leídas (polling ultra-liviano)
      */

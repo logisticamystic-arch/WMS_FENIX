@@ -2274,8 +2274,35 @@
         this._preloadCancelled = true; // señal para cancelar preload en marcha
       },
 
+      /**
+       * Pinta un contador de pendientes dentro de cada botón .nm-item del
+       * sidebar. Tolera fallo del endpoint (si revienta la red, deja los
+       * badges como estén). El servidor ya aísla la caída de queries por
+       * módulo con try/catch (ver NotificacionesController::pendientesPorModulo).
+       */
+      async loadModuloBadges() {
+        if (!_wmsToken) return;
+        try {
+          const r = await API.get('/notificaciones/pendientes-por-modulo');
+          if (r.error || !r.data) return;
+          Object.entries(r.data).forEach(([mod, count]) => {
+            const btn = document.querySelector(`.nm-item[data-module="${mod}"]`);
+            if (!btn) return;
+            let badge = btn.querySelector('.nm-badge');
+            if (!count) { badge?.remove(); return; }
+            if (!badge) {
+              badge = document.createElement('span');
+              badge.className = 'nm-badge';
+              btn.appendChild(badge);
+            }
+            badge.textContent = count > 99 ? '99+' : String(count);
+          });
+        } catch (_) { /* red caída: silencio, se reintenta en el próximo tick */ }
+      },
+
       async loadBadge() {
         if (!_wmsToken) return;
+        this.loadModuloBadges(); // badges del sidebar (aprobaciones, picking, …)
         try {
           const r = await API.get('/notificaciones/badge');
           if (r.error) return;

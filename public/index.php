@@ -1072,6 +1072,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     // Módulo: Notificaciones
     $group->get('/notificaciones', [\App\Controllers\NotificacionesController::class, 'index']);
     $group->get('/notificaciones/badge', [\App\Controllers\NotificacionesController::class, 'badge']);
+    $group->get('/notificaciones/pendientes-por-modulo', [\App\Controllers\NotificacionesController::class, 'pendientesPorModulo']);
     $group->put('/notificaciones/leer-todas', [\App\Controllers\NotificacionesController::class, 'marcarTodasLeidas']);
     $group->delete('/notificaciones/limpiar-leidas', [\App\Controllers\NotificacionesController::class, 'eliminarLeidas']);
     $group->put('/notificaciones/{id}/leer', [\App\Controllers\NotificacionesController::class, 'marcarLeida']);

@@ -514,21 +514,24 @@ WMS_MODULES.programacion = {
       if (!fila) { WMS.toast('error', 'Turno inválido.'); return; }
 
       let slot = a.slot;
-      const buscarSlotLibre = (filaId, maxSlots) => {
-        for (let s = 0; s < maxSlots; s++) {
+      // Rutas: respetan slots configurados (son únicas).
+      // Turnos/apoyo/otros: sin límite — buscamos el primer hueco disponible.
+      const esRuta = fila.codigo.startsWith('RUTA');
+      const maxBuscar = esRuta ? (fila.slots || 1) : 9999;
+      const buscarSlotLibre = (filaId) => {
+        for (let s = 0; s < maxBuscar; s++) {
           if (!m.celdas[`${a.dia}-${filaId}-${s}`]) return s;
         }
         return -1;
       };
 
       if (!esEdicion) {
-        slot = buscarSlotLibre(v.fila_id, fila.slots || 1);
-        if (slot < 0) { WMS.toast('warning', `Fila ${fila.codigo} llena este día (${fila.slots} slots).`); return; }
+        slot = buscarSlotLibre(v.fila_id);
+        if (slot < 0) { WMS.toast('warning', `Ruta ${fila.codigo} ya está asignada este día.`); return; }
       } else if (v.fila_id !== a.filaId) {
-        // cambio de fila → borrar celda vieja y crear en nueva
         await this.enviarCelda({ dia: a.dia, fila_id: a.filaId, slot: a.slot, personal_id: null, tarea_id: null, descansa: false });
-        slot = buscarSlotLibre(v.fila_id, fila.slots || 1);
-        if (slot < 0) { WMS.toast('warning', `Fila ${fila.codigo} llena este día.`); return; }
+        slot = buscarSlotLibre(v.fila_id);
+        if (slot < 0) { WMS.toast('warning', `Ruta ${fila.codigo} ya está asignada este día.`); return; }
       }
 
       await this.enviarCelda({ dia: a.dia, fila_id: v.fila_id, slot, personal_id: v.personal_id, tarea_id: v.tarea_id, descansa: false });
