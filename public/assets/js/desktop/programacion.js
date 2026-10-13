@@ -61,17 +61,21 @@ WMS_MODULES.programacion = {
         .prog-vtab{padding:5px 12px;background:#fff;border:none;cursor:pointer;font-size:.82rem;border-right:1px solid #cbd5e1;}
         .prog-vtab:last-child{border-right:none;}
         .prog-vtab.active{background:#1e293b;color:#fff;}
-        .prog-cal-head{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));background:#1e293b;color:#fff;font-weight:700;font-size:.78rem;text-align:center;}
-        .prog-cal-head > div{padding:8px 4px;border-right:1px solid #334155;container-type:inline-size;overflow:hidden;white-space:nowrap;min-width:0;}
-        .prog-cal-head > div:last-child{border-right:none;}
-        .prog-cal-head .dow-long{display:none;}
-        .prog-cal-head .dow-short{display:inline;}
+        /* Un solo grid plano: cabeceras + N semanas × 7 celdas.
+           minmax(140px, auto) deja que cada columna crezca si el contenido
+           más ancho (header + cualquier celda de ese día del mes) lo pide,
+           pero nunca baja de 140px. Si crece más que el viewport, el wrapper
+           hace scroll horizontal. */
+        .prog-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(140px,auto));}
+        .prog-cal-hdr{background:#1e293b;color:#fff;font-weight:700;font-size:.78rem;text-align:center;padding:8px 4px;border-right:1px solid #334155;container-type:inline-size;white-space:nowrap;position:sticky;top:0;z-index:2;}
+        .prog-cal-hdr:nth-child(7){border-right:none;}
+        .prog-cal-hdr .dow-long{display:none;}
+        .prog-cal-hdr .dow-short{display:inline;}
         @container (min-width: 90px){
-          .prog-cal-head .dow-long{display:inline;}
-          .prog-cal-head .dow-short{display:none;}
+          .prog-cal-hdr .dow-long{display:inline;}
+          .prog-cal-hdr .dow-short{display:none;}
         }
-        .prog-cal-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-top:1px solid #e2e8f0;}
-        .prog-cal-cell{min-width:0;overflow:hidden;min-height:120px;padding:6px;border-right:1px solid #e2e8f0;background:#fff;position:relative;display:flex;flex-direction:column;}
+        .prog-cal-cell{min-height:120px;padding:6px;border-right:1px solid #e2e8f0;border-top:1px solid #e2e8f0;background:#fff;position:relative;display:flex;flex-direction:column;}
         .prog-cal-cell.drag-over{outline:2px dashed #2b5fc7;outline-offset:-3px;background:#eff6ff;}
         .prog-cal-cell:last-child{border-right:none;}
         .prog-cal-cell.other{background:#fafbfc;color:#94a3b8;}
@@ -197,11 +201,11 @@ WMS_MODULES.programacion = {
     const hoyStr = fmtFecha(new Date());
     const esFinde = (d) => d.getDay() === 0 || d.getDay() === 6;
 
-    let html = `<div class="prog-cal-head">${nombresCorto.map((n, i) =>
-      `<div><span class="dow-short">${n}</span><span class="dow-long">${nombresLargo[i]}</span></div>`
-    ).join('')}</div>`;
+    let html = `<div class="prog-cal-grid">` +
+      nombresCorto.map((n, i) =>
+        `<div class="prog-cal-hdr"><span class="dow-short">${n}</span><span class="dow-long">${nombresLargo[i]}</span></div>`
+      ).join('');
     for (const sem of semanasVisibles) {
-      html += `<div class="prog-cal-week">`;
       for (const d of sem) {
         const fs = fmtFecha(d);
         const inMonth = d.getMonth() === (m.mes - 1) && d.getFullYear() === m.anio;
@@ -235,8 +239,8 @@ WMS_MODULES.programacion = {
           <div style="flex:1;overflow:auto;min-width:0;">${asigsHtml}${descansoChips}</div>
         </div>`;
       }
-      html += `</div>`;
     }
+    html += `</div>`; // cierre .prog-cal-grid
     document.getElementById('prog-cal-wrap').innerHTML = html + this.renderLeyenda();
 
     // Rango label
