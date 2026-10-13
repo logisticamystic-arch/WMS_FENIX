@@ -60,9 +60,15 @@ WMS_MODULES.programacion = {
         .prog-vtab{padding:5px 12px;background:#fff;border:none;cursor:pointer;font-size:.82rem;border-right:1px solid #cbd5e1;}
         .prog-vtab:last-child{border-right:none;}
         .prog-vtab.active{background:#1e293b;color:#fff;}
-        .prog-cal-head{display:grid;grid-template-columns:repeat(7,1fr);background:#1e293b;color:#fff;font-weight:700;font-size:.78rem;text-align:center;}
-        .prog-cal-head > div{padding:8px 4px;border-right:1px solid #334155;}
+        .prog-cal-head{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));background:#1e293b;color:#fff;font-weight:700;font-size:.78rem;text-align:center;}
+        .prog-cal-head > div{padding:8px 4px;border-right:1px solid #334155;container-type:inline-size;overflow:hidden;}
         .prog-cal-head > div:last-child{border-right:none;}
+        .prog-cal-head .dow-long{display:none;}
+        .prog-cal-head .dow-short{display:inline;}
+        @container (min-width: 90px){
+          .prog-cal-head .dow-long{display:inline;}
+          .prog-cal-head .dow-short{display:none;}
+        }
         .prog-cal-week{display:grid;grid-template-columns:repeat(7,1fr);border-top:1px solid #e2e8f0;}
         .prog-cal-cell{min-height:120px;padding:6px;border-right:1px solid #e2e8f0;background:#fff;position:relative;display:flex;flex-direction:column;}
         .prog-cal-cell:last-child{border-right:none;}
@@ -181,12 +187,15 @@ WMS_MODULES.programacion = {
       }
     }
 
-    const nombresCol = ['LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB', 'DOM'];
+    const nombresCorto = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'];
+    const nombresLargo = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 'DOMINGO'];
     const fmtFecha = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     const hoyStr = fmtFecha(new Date());
     const esFinde = (d) => d.getDay() === 0 || d.getDay() === 6;
 
-    let html = `<div class="prog-cal-head">${nombresCol.map(n => `<div>${n}</div>`).join('')}</div>`;
+    let html = `<div class="prog-cal-head">${nombresCorto.map((n, i) =>
+      `<div><span class="dow-short">${n}</span><span class="dow-long">${nombresLargo[i]}</span></div>`
+    ).join('')}</div>`;
     for (const sem of semanasVisibles) {
       html += `<div class="prog-cal-week">`;
       for (const d of sem) {
@@ -204,7 +213,7 @@ WMS_MODULES.programacion = {
         const descansoChips = inMonth
           ? (descansosPorDia[d.getDate()] || [])
               .map(pid => (m.personal.find(p => p.id == pid) || {}).nombre || '?')
-              .map(n => `<span class="prog-desc-chip" title="Descansa">💤 ${WMS.esc(n.split(' ')[0])}</span>`)
+              .map(n => `<span class="prog-desc-chip" title="Descansa — ${WMS.esc(n)}">💤 ${WMS.esc(this._nombreCorto(n))}</span>`)
               .join('')
           : '';
 
@@ -240,7 +249,7 @@ WMS_MODULES.programacion = {
     return `<div class="prog-asig" style="background:${bg};" onclick="WMS_MODULES.programacion.editarAsig('${key}')">
       <span class="turno">${fila ? WMS.esc(fila.codigo.replace('TURNO-','T')) : '?'}</span>
       ${tarea ? `<span class="rol">${WMS.esc(tarea.codigo)}</span>` : ''}
-      <span class="pers">${pers ? WMS.esc(pers.nombre) : '<i style="color:#dc2626;">Sin asignar</i>'}</span>
+      <span class="pers" title="${pers ? WMS.esc(pers.nombre) : ''}">${pers ? WMS.esc(this._nombreCorto(pers.nombre)) : '<i style="color:#dc2626;">Sin asignar</i>'}</span>
     </div>`;
   },
 
@@ -271,7 +280,26 @@ WMS_MODULES.programacion = {
       })
       .sort((a, b) => a.nombre.localeCompare(b.nombre));
 
-    let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    // ── Horarios de los turnos (encima de descansos) ──────────────────
+    const turnos = m.filas
+      .filter(f => f.codigo !== 'DESCANSO' && f.hora_inicio && f.hora_fin)
+      .sort((a, b) => (a.orden || 0) - (b.orden || 0));
+    let html = '';
+    if (turnos.length) {
+      html += `<div style="margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #e2e8f0;">
+        <strong style="font-size:.9rem;display:block;margin-bottom:8px;"><i class="fa-solid fa-clock"></i> Horarios de turnos</strong>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          ${turnos.map(t => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 8px;background:#1e293b;color:#fff;border-radius:4px;font-size:.75rem;">
+              <span style="font-weight:700;">${WMS.esc(t.codigo)}</span>
+              <span>${t.hora_inicio.slice(0,5)} - ${t.hora_fin.slice(0,5)}</span>
+            </div>`).join('')}
+        </div>
+      </div>`;
+    }
+
+    // ── Sección de descansos ──────────────────────────────────────────
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
       <strong style="font-size:.9rem;"><i class="fa-solid fa-bed"></i> Descansos</strong>
       <button class="btn btn-primary btn-sm" style="padding:4px 10px;font-size:.75rem;" onclick="WMS_MODULES.programacion.agregarDescanso()" title="Agregar personal que descansa">
         <i class="fa-solid fa-plus"></i>
@@ -291,30 +319,13 @@ WMS_MODULES.programacion = {
         </span>`).join('');
         html += `<div style="padding:8px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc;">
           <div style="display:flex;justify-content:space-between;align-items:start;gap:4px;">
-            <div style="font-weight:600;font-size:.8rem;flex:1;">${WMS.esc(f.nombre)}</div>
+            <div style="font-weight:600;font-size:.8rem;flex:1;" title="${WMS.esc(f.nombre)}">${WMS.esc(this._nombreCorto(f.nombre))}</div>
             <button onclick="WMS_MODULES.programacion.agregarDescanso(${f.pid})" title="Agregar día" style="background:none;border:none;color:#2b5fc7;cursor:pointer;padding:0;"><i class="fa-solid fa-circle-plus"></i></button>
           </div>
           <div style="margin-top:4px;">${chips}</div>
         </div>`;
       }
       html += '</div>';
-    }
-
-    // ── Horarios de los turnos (debajo de descansos) ───────────────────
-    const turnos = m.filas
-      .filter(f => f.codigo !== 'DESCANSO' && f.hora_inicio && f.hora_fin)
-      .sort((a, b) => (a.orden || 0) - (b.orden || 0));
-    if (turnos.length) {
-      html += `<div style="margin-top:14px;padding-top:12px;border-top:1px solid #e2e8f0;">
-        <strong style="font-size:.9rem;display:block;margin-bottom:8px;"><i class="fa-solid fa-clock"></i> Horarios de turnos</strong>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          ${turnos.map(t => `
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 8px;background:#1e293b;color:#fff;border-radius:4px;font-size:.75rem;">
-              <span style="font-weight:700;">${WMS.esc(t.codigo)}</span>
-              <span>${t.hora_inicio.slice(0,5)} - ${t.hora_fin.slice(0,5)}</span>
-            </div>`).join('')}
-        </div>
-      </div>`;
     }
 
     el.innerHTML = html;
@@ -326,6 +337,15 @@ WMS_MODULES.programacion = {
   _dowDe(dia) {
     const m = this._matriz;
     return (new Date(m.anio, m.mes - 1, dia).getDay() + 6) % 7;
+  },
+
+  // "ANDRES VILLADA ESTEBAN DIAZ" → "Andres Villada" (primer nombre + primer apellido).
+  // Si el nombre tiene una sola palabra la devuelve tal cual, en Title Case.
+  _nombreCorto(nombre) {
+    if (!nombre) return '';
+    const partes = String(nombre).trim().split(/\s+/);
+    const dos = partes.slice(0, 2).join(' ');
+    return dos.replace(/\w\S*/g, s => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase());
   },
 
   // ── Agregar descanso (persona + día(s)) — calendario Lun-Dom ────────────
